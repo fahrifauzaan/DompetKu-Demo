@@ -224,19 +224,19 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
       <main className="lg:pl-64 w-full min-h-screen">
         {/* TopNavBar Header */}
         <header className="fixed top-0 left-0 lg:left-64 right-0 z-30 bg-slate-50/80 dark:bg-slate-950/80 backdrop-blur-xl h-16 shadow-sm flex items-center px-4 lg:px-8 justify-between no-print">
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
             <button 
               onClick={() => setShowMobileMenu(!showMobileMenu)} 
-              className="lg:hidden text-slate-500 hover:bg-slate-100 p-2 rounded-full cursor-pointer transition-colors"
+              className="lg:hidden text-slate-500 hover:bg-slate-100 p-1.5 sm:p-2 rounded-full cursor-pointer transition-colors shrink-0"
             >
               <span className="material-symbols-outlined">menu</span>
             </button>
-            <h1 className="text-xl font-bold text-blue-950 dark:text-white font-headline tracking-tight capitalize">
+            <h1 className="text-lg sm:text-xl font-bold text-blue-950 dark:text-white font-headline tracking-tight capitalize truncate">
               {activeTab === 'dashboard' ? 'Dasbor' : activeTab === 'transactions' ? 'Transaksi' : activeTab === 'budget' ? 'Anggaran' : activeTab === 'assets' ? 'Aset' : activeTab === 'analytics' || activeTab.includes('report') ? 'Laporan' : activeTab === 'notifications' ? 'Notifikasi' : activeTab === 'settings' ? 'Pengaturan' : 'Manajemen'}
             </h1>
           </div>
           
-          <div className="flex items-center gap-4 lg:gap-8 flex-1 justify-end lg:justify-between px-2">
+          <div className="flex items-center gap-1 sm:gap-2 lg:gap-8 flex-1 justify-end lg:justify-between pl-2">
             {/* Global Search Bar (Desktop) */}
             <div 
               onClick={() => setShowSearch(true)}
@@ -252,12 +252,11 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
               </div>
             </div>
             
-            <div className="flex items-center gap-2 lg:gap-4">
-              {/* Mobile Search Trigger - Hidden on Desktop */}
+            <div className="flex items-center gap-1 sm:gap-2 lg:gap-4 shrink-0">
               <div className="lg:hidden">
                 <span 
                   onClick={() => setShowSearch(true)}
-                  className="material-symbols-outlined p-2 rounded-full cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  className="material-symbols-outlined p-1.5 sm:p-2 rounded-full cursor-pointer text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                 >
                   search
                 </span>
@@ -267,7 +266,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
                 onClick={() => syncFromGoogleSheets()}
                 disabled={isSyncing}
                 title={lastSyncAt ? `Terakhir sinkronisasi: ${new Date(lastSyncAt).toLocaleTimeString('id-ID')}` : 'Sinkronkan data'}
-                className={`material-symbols-outlined p-2 rounded-full cursor-pointer transition-all flex items-center justify-center relative border border-transparent bg-transparent disabled:opacity-75 ${
+                className={`material-symbols-outlined p-1.5 sm:p-2 rounded-full cursor-pointer transition-all flex items-center justify-center relative border border-transparent bg-transparent disabled:opacity-75 ${
                   isSyncing 
                     ? 'text-blue-600 dark:text-[#a7c8ff] animate-spin' 
                     : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-[#a7c8ff]'
@@ -279,7 +278,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
               <div className="relative">
                 <span 
                   onClick={() => setActiveTab('notifications')}
-                  className={`material-symbols-outlined p-2 rounded-full cursor-pointer transition-colors flex items-center justify-center ${activeTab === 'notifications' ? 'bg-primary/10 text-primary dark:bg-[#a7c8ff]/20 dark:text-[#a7c8ff]' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                  className={`material-symbols-outlined p-1.5 sm:p-2 rounded-full cursor-pointer transition-colors flex items-center justify-center ${activeTab === 'notifications' ? 'bg-primary/10 text-primary dark:bg-[#a7c8ff]/20 dark:text-[#a7c8ff]' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
                 >
                   notifications
                 </span>
@@ -289,11 +288,11 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
               </div>
               <span 
                 onClick={() => setActiveTab('settings')}
-                className={`material-symbols-outlined p-2 rounded-full cursor-pointer transition-colors ${activeTab === 'settings' ? 'bg-primary/10 text-primary dark:bg-[#a7c8ff]/20 dark:text-[#a7c8ff]' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+                className={`material-symbols-outlined p-1.5 sm:p-2 rounded-full cursor-pointer transition-colors ${activeTab === 'settings' ? 'bg-primary/10 text-primary dark:bg-[#a7c8ff]/20 dark:text-[#a7c8ff]' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               >
                 settings
               </span>
-              <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-300 dark:border-slate-700">
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-300 dark:border-slate-700 ml-0.5 sm:ml-1 shrink-0">
                 <img alt="User Avatar" className="w-full h-full object-cover" src={user?.photoURL || "https://ui-avatars.com/api/?name=User+Demo&background=0D8ABC&color=fff"} />
               </div>
             </div>
