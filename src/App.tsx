@@ -22,15 +22,6 @@ const App: React.FC = () => {
 
   const toggleDark = () => setIsDark(prev => !prev);
 
-  const handleReset = () => {
-    if (window.confirm('Apakah Anda yakin ingin mengatur ulang semua data demo? Semua data transaksi, aset, dan anggaran yang Anda tambahkan akan dikembalikan ke kondisi awal.')) {
-      const keysToRemove = Object.keys(localStorage).filter(key => 
-        key.startsWith('nam_wealth') || key.includes('finance') || key.includes('asset') || key.includes('budget') || key.includes('debt')
-      );
-      keysToRemove.forEach(key => localStorage.removeItem(key));
-      window.location.reload();
-    }
-  };
 
   if (!user) {
     return <FinanceLogin />;
@@ -40,7 +31,6 @@ const App: React.FC = () => {
     <FinanceDemo 
       isDark={isDark} 
       toggleDark={toggleDark} 
-      onBack={handleReset} 
     />
   );
 };

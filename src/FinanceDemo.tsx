@@ -25,14 +25,13 @@ import { useAuthStore } from './store/useAuthStore';
 import FinanceOnboardingModal from './finance-components/FinanceOnboardingModal';
 
 interface FinanceDemoProps {
-  onBack: () => void;
   isDark: boolean;
   toggleDark: () => void;
 }
 
 export type FinanceTab = 'dashboard' | 'transactions' | 'budget' | 'assets' | 'debts' | 'analytics' | 'portfolio-report' | 'performance-report' | 'equity-ledger' | 'add-transaction' | 'add-category' | 'integration' | 'add-asset' | 'add-account' | 'notifications' | 'settings';
 
-const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark }) => {
+const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
   const [activeTab, setActiveTab] = useState<FinanceTab>('dashboard');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
@@ -206,12 +205,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
               <span className="material-symbols-outlined text-sm">{isDark ? 'light_mode' : 'dark_mode'}</span>
               Tema {isDark ? 'Terang' : 'Gelap'}
             </a>
-            {!user?.sheetUrl && (
-              <a onClick={onBack} className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 mx-2 rounded-lg flex items-center gap-3 px-4 py-2 font-['Inter'] font-medium text-xs cursor-pointer">
-                <span className="material-symbols-outlined text-sm">restart_alt</span>
-                Reset Demo
-              </a>
-            )}
+
             <a onClick={logout} className="text-error hover:bg-red-50 dark:hover:bg-red-900/20 mx-2 rounded-lg flex items-center gap-3 px-4 py-2 font-['Inter'] font-medium text-xs cursor-pointer border-t border-slate-200/10 mt-1 pt-2">
               <span className="material-symbols-outlined text-sm">logout</span>
               Keluar Akun
@@ -390,12 +384,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
                   <span className="material-symbols-outlined">logout</span>
                   Keluar Akun
                 </a>
-                {!user?.sheetUrl && (
-                  <a onClick={onBack} className="text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-lg flex items-center gap-3 px-4 py-3 font-['Inter'] font-medium text-sm cursor-pointer">
-                    <span className="material-symbols-outlined">restart_alt</span>
-                    Reset Demo
-                  </a>
-                )}
+
               </div>
             </motion.div>
           </div>
