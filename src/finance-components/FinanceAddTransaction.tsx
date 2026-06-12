@@ -1,0 +1,545 @@
+import React, { useState, useEffect } from 'react';
+import { FeatureCTA } from './MarketingCTAModal';
+import { useFinanceStore, TransactionType } from '../store/useFinanceStore';
+
+const expenseCategories = [
+  { name: 'Housing', icon: 'home' },
+  { name: 'Food', icon: 'restaurant' },
+  { name: 'Utilities', icon: 'bolt' },
+  { name: 'Healthcare', icon: 'medical_services' },
+  { name: 'Transportation', icon: 'directions_car' },
+  { name: 'Debt', icon: 'credit_card' },
+  { name: 'Personal Care', icon: 'spa' },
+  { name: 'Education', icon: 'school' },
+  { name: 'Childcare', icon: 'child_care' },
+  { name: 'Household', icon: 'living' },
+  { name: 'Pets', icon: 'pets' },
+  { name: 'Clothing and Accessories', icon: 'checkroom' },
+  { name: 'Insurance', icon: 'health_and_safety' },
+  { name: 'Work Expenses', icon: 'work' },
+  { name: 'Entertainment', icon: 'sports_esports' },
+  { name: 'Gift', icon: 'card_giftcard' },
+  { name: 'Travel', icon: 'flight' },
+  { name: 'Subscription', icon: 'workspace_premium' },
+  { name: 'Bills', icon: 'receipt_long' },
+];
+
+const incomeCategories = [
+  { name: 'Salary', icon: 'work' },
+  { name: 'Partner Salary', icon: 'diversity_3' },
+  { name: 'Side Hustle / Freelance', icon: 'two_wheeler' },
+  { name: 'Business Income', icon: 'storefront' },
+  { name: 'Investments Income / Dividends / Capital Gains', icon: 'pie_chart' },
+  { name: 'Rental Income', icon: 'real_estate_agent' },
+  { name: 'Commissions', icon: 'percent' },
+  { name: 'Bonuses', icon: 'star' },
+  { name: 'Pension Income', icon: 'elderly' },
+  { name: 'Scholarships / Grants', icon: 'school' },
+  { name: 'Inheritance', icon: 'volunteer_activism' },
+  { name: 'Lottery / Gambling Winnings', icon: 'casino' },
+  { name: 'Gifts', icon: 'card_giftcard' },
+  { name: 'Refunds / Reimbursements', icon: 'currency_exchange' },
+  { name: 'Others', icon: 'payments' },
+];
+
+interface FinanceAddTransactionProps {
+  onShowCTA: (feature?: FeatureCTA) => void;
+  onBack: () => void;
+}
+
+const FinanceAddTransaction: React.FC<FinanceAddTransactionProps> = ({ onShowCTA, onBack }) => {
+  const accounts = useFinanceStore(state => state.accounts);
+  const budgetCategories = useFinanceStore(state => state.budgetCategories);
+  const transactions = useFinanceStore(state => state.transactions);
+  const addTransaction = useFinanceStore(state => state.addTransaction);
+
+  const [transactionType, setTransactionType] = useState<'pengeluaran' | 'pemasukan' | 'transfer'>('pengeluaran');
+  const [amount, setAmount] = useState('0');
+  const [account, setAccount] = useState('');
+  const [toAccount, setToAccount] = useState('');
+  const [category, setCategory] = useState('Housing');
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [desc, setDesc] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const currentCategories = transactionType === 'pemasukan' 
+    ? incomeCategories 
+    : (transactionType === 'pengeluaran' ? expenseCategories : [{ name: 'Transfer', icon: 'swap_horiz' }, { name: 'Lainnya', icon: 'receipt_long' }]);
+
+  useEffect(() => {
+    // Reset category when transaction type changes
+    setCategory(currentCategories[0].name);
+  }, [transactionType]);
+
+  // Set default selected account on mount or when accounts change
+  useEffect(() => {
+    if (accounts.length > 0 && !account) {
+      setAccount(accounts[0].name);
+    }
+  }, [accounts, account]);
+
+  // Auto-select a different destination account when in transfer mode
+  useEffect(() => {
+    if (transactionType === 'transfer' && accounts.length > 1) {
+      if (!toAccount || toAccount === account) {
+        const other = accounts.find(acc => acc.name !== account);
+        if (other) {
+          setToAccount(other.name);
+        }
+      }
+    }
+  }, [transactionType, accounts, account, toAccount]);
+
+  const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // Basic number formatting
+    const val = e.target.value.replace(/\D/g, '');
+    if (!val) {
+      setAmount('0');
+      return;
+    }
+    const formatted = parseInt(val, 10).toLocaleString('id-ID');
+    setAmount(formatted);
+  };
+
+  const handleSave = async () => {
+    if (!account) {
+      alert('Silakan pilih akun rekening terlebih dahulu!');
+      return;
+    }
+    if (transactionType === 'transfer') {
+      if (!toAccount) {
+        alert('Silakan pilih akun rekening tujuan terlebih dahulu!');
+        return;
+      }
+      if (account === toAccount) {
+        alert('Akun tujuan tidak boleh sama dengan akun sumber!');
+        return;
+      }
+    }
+
+    setIsSaving(true);
+    const rawAmount = parseInt(amount.replace(/\D/g, ''), 10) || 0;
+
+    if (transactionType === 'transfer') {
+      // 1. Transaction 1: Deduction from Source Account
+      await addTransaction({
+        date,
+        desc: desc ? `Transfer ke ${toAccount}: ${desc}` : `Transfer Saldo ke ${toAccount}`,
+        location: 'Local',
+        amount: -Math.abs(rawAmount),
+        category: 'Transfer',
+        icon: 'swap_horiz',
+        status: 'Selesai',
+        account: account,
+        type: 'TRANSFER'
+      });
+
+      // 2. Transaction 2: Addition to Destination Account
+      await addTransaction({
+        date,
+        desc: desc ? `Transfer dari ${account}: ${desc}` : `Transfer Saldo dari ${account}`,
+        location: 'Local',
+        amount: Math.abs(rawAmount),
+        category: 'Transfer',
+        icon: 'swap_horiz',
+        status: 'Selesai',
+        account: toAccount,
+        type: 'TRANSFER'
+      });
+    } else {
+      const finalAmount = transactionType === 'pengeluaran' ? -Math.abs(rawAmount) : Math.abs(rawAmount);
+      await addTransaction({
+        date,
+        desc: desc || (transactionType === 'pengeluaran' ? 'Pengeluaran Baru' : 'Pemasukan Baru'),
+        location: 'Local',
+        amount: finalAmount,
+        category,
+        icon: currentCategories.find(c => c.name === category)?.icon || 'receipt_long',
+        status: 'Selesai',
+        account,
+        type: transactionType.toUpperCase() as TransactionType
+      });
+    }
+    
+    setIsSaving(false);
+    onBack(); // Go back to transactions view
+  };
+
+  // Dynamic calculations for selected account
+  const selectedAccountObj = accounts.find(acc => acc.name === account);
+  const currentBalance = selectedAccountObj ? selectedAccountObj.balance : 0;
+  const rawAmount = parseInt(amount.replace(/\D/g, ''), 10) || 0;
+  
+  let estimatedBalance = currentBalance;
+  if (transactionType === 'pengeluaran' || transactionType === 'transfer') {
+    estimatedBalance = currentBalance - rawAmount;
+  } else if (transactionType === 'pemasukan') {
+    estimatedBalance = currentBalance + rawAmount;
+  }
+
+  // Calculate budget category info
+  const matchingBudget = budgetCategories.find(c => c.name.toLowerCase().includes(category.toLowerCase()) || category.toLowerCase().includes(c.name.toLowerCase()));
+  const currentMonthTx = transactions.filter(t => {
+    if (!t.date) return false;
+    // Handle different date formats safely
+    try {
+      const txDate = new Date(t.date);
+      const now = new Date();
+      return txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear();
+    } catch {
+      return false;
+    }
+  });
+
+  const spentInCat = Math.abs(currentMonthTx
+    .filter(t => t.category.toLowerCase() === category.toLowerCase() && t.type === 'PENGELUARAN')
+    .reduce((sum, t) => sum + t.amount, 0));
+
+  const budgetAllocated = matchingBudget ? matchingBudget.allocated : 5000000; // fallback default 5jt
+  const newSpent = spentInCat + (transactionType === 'pengeluaran' ? rawAmount : 0);
+  const usagePercent = budgetAllocated > 0 ? Math.min(Math.round((newSpent / budgetAllocated) * 100), 100) : 0;
+
+  return (
+    <div className="w-full max-w-7xl mx-auto animate-in slide-in-from-bottom-4 duration-500 pb-24 text-left">
+      {/* Header with Back Button */}
+      <div className="flex items-center gap-4 mb-8 z-10 relative px-2">
+        <button 
+          onClick={onBack}
+          className="p-2.5 rounded-full hover:bg-surface-container-high dark:hover:bg-white/10 transition-colors flex items-center justify-center bg-surface-container-low dark:bg-white/5 active:scale-95 text-on-surface dark:text-white cursor-pointer"
+        >
+          <span className="material-symbols-outlined">arrow_back</span>
+        </button>
+        <div>
+          <h2 className="font-headline font-extrabold text-2xl md:text-3xl tracking-tight text-primary dark:text-white">Tambah Transaksi</h2>
+          <p className="text-on-surface-variant dark:text-outline text-xs md:text-sm font-medium mt-0.5">Catat detail transaksi cerdas secara presisi dan sinkron dengan basis data.</p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+        {/* Left Column: Core Form (7 cols on desktop) */}
+        <div className="lg:col-span-7 bg-surface-container-lowest/60 dark:bg-white/[0.02] backdrop-blur-xl border border-outline-variant/10 dark:border-white/10 rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden space-y-8">
+          {/* Background radial glow accents for that luxury look */}
+          <div className="absolute -right-24 -top-24 w-64 h-64 bg-primary/5 dark:bg-[#a7c8ff]/5 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -left-24 -bottom-24 w-64 h-64 bg-[#a7c8ff]/5 dark:bg-primary/5 rounded-full blur-3xl pointer-events-none"></div>
+
+          <div className="space-y-8 z-10 relative">
+            {/* Transaction Mode Toggles */}
+            <div className="bg-surface-container-low dark:bg-white/5 p-1 rounded-full flex justify-between w-full shadow-inner border border-outline-variant/10 dark:border-white/10">
+              {(['pengeluaran', 'pemasukan', 'transfer'] as const).map((type) => (
+                <button 
+                  key={type}
+                  onClick={() => setTransactionType(type)}
+                  className={`flex-1 text-center py-2.5 rounded-full text-sm font-bold capitalize transition-all active:scale-95 cursor-pointer ${
+                    transactionType === type 
+                      ? 'bg-primary dark:bg-[#a7c8ff] text-white dark:text-[#001b3c] shadow-md' 
+                      : 'text-on-surface-variant dark:text-slate-300 hover:bg-surface-container-low dark:hover:bg-white/10'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            {/* Nominal Input */}
+            <div className="space-y-3 text-center">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline block">Nominal Transaksi</label>
+              <div className="flex items-baseline justify-center gap-2 border-b-2 border-primary-container/10 dark:border-white/10 pb-4 focus-within:border-primary dark:focus-within:border-[#a7c8ff] transition-all group max-w-md mx-auto">
+                <span className="font-headline text-2xl font-bold text-on-surface-variant dark:text-slate-400 group-focus-within:text-primary dark:group-focus-within:text-[#a7c8ff] transition-colors">Rp</span>
+                <input 
+                  className="w-full bg-transparent border-none p-0 font-headline text-5xl font-extrabold text-primary dark:text-[#a7c8ff] text-center tabular-nums focus:ring-0 placeholder:text-surface-container-high dark:placeholder:text-white/20 transition-colors" 
+                  placeholder="0" 
+                  type="text" 
+                  value={amount}
+                  onChange={handleAmountChange}
+                />
+              </div>
+            </div>
+
+            {/* Grid for Core Fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="space-y-2 text-left">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">
+                  {transactionType === 'transfer' ? 'Akun Sumber (Dari)' : 'Pilih Akun'}
+                </label>
+                <div className="relative group">
+                  <select value={account} onChange={(e) => setAccount(e.target.value)} className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-3.5 px-4 text-on-surface dark:text-white font-medium appearance-none focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 transition-all cursor-pointer">
+                    {accounts.length === 0 ? (
+                      <option value="" className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Tidak ada akun rekening</option>
+                    ) : (
+                      accounts.map(acc => (
+                        <option key={acc.id} value={acc.name} className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">{acc.name}</option>
+                      ))
+                    )}
+                  </select>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant dark:text-outline">keyboard_arrow_down</span>
+                </div>
+              </div>
+
+              <div className="space-y-2 text-left">
+                {transactionType === 'transfer' ? (
+                  <>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Akun Tujuan (Ke)</label>
+                    <div className="relative group">
+                      <select value={toAccount} onChange={(e) => setToAccount(e.target.value)} className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-3.5 px-4 text-on-surface dark:text-white font-medium appearance-none focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 transition-all cursor-pointer">
+                        {accounts.filter(acc => acc.name !== account).length === 0 ? (
+                          <option value="" className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Tidak ada akun tujuan</option>
+                        ) : (
+                          accounts.filter(acc => acc.name !== account).map(acc => (
+                            <option key={acc.id} value={acc.name} className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">{acc.name}</option>
+                          ))
+                        )}
+                      </select>
+                      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant dark:text-outline">keyboard_arrow_down</span>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Kategori</label>
+                    <div className="relative group">
+                      <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-3.5 px-4 text-on-surface dark:text-white font-medium appearance-none focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 transition-all cursor-pointer">
+                        {currentCategories.map(cat => (
+                          <option key={cat.name} value={cat.name} className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">{cat.name}</option>
+                        ))}
+                      </select>
+                      <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant dark:text-outline">keyboard_arrow_down</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div className="space-y-2 text-left">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Tanggal</label>
+                <input value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-3.5 px-4 text-on-surface dark:text-white font-medium focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 transition-all [color-scheme:light] dark:[color-scheme:dark] cursor-pointer" type="date" />
+              </div>
+
+              <div className="space-y-2 text-left">
+                <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Transaksi Berulang</label>
+                <div className="relative group">
+                  <select className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-3.5 px-4 text-on-surface dark:text-white font-medium appearance-none focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 transition-all cursor-pointer">
+                    <option className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Tidak Berulang</option>
+                    <option className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Harian</option>
+                    <option className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Mingguan</option>
+                    <option className="bg-surface-container dark:bg-slate-900 text-on-surface dark:text-white">Bulanan</option>
+                  </select>
+                  <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-on-surface-variant dark:text-outline">repeat</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-left">
+              <label className="text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Deskripsi (Opsional)</label>
+              <textarea 
+                value={desc}
+                onChange={(e) => setDesc(e.target.value)}
+                className="w-full bg-surface-container-low dark:bg-white/5 border-none rounded-xl py-4 px-4 text-on-surface dark:text-white font-medium focus:ring-2 focus:ring-primary-container/20 dark:focus:ring-white/20 placeholder:text-outline-variant dark:placeholder:text-white/30 transition-all" 
+                placeholder="Contoh: Makan siang dengan klien di Senayan City" 
+                rows={3}
+              ></textarea>
+            </div>
+
+            {/* Action Buttons inside Form */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-4">
+              <button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex-grow py-4 rounded-xl bg-gradient-to-r from-primary to-primary-container dark:from-[#a7c8ff] dark:to-[#82b1ff] text-white dark:text-[#001b3c] font-bold tracking-tight shadow-lg shadow-primary-container/20 dark:shadow-[#a7c8ff]/20 hover:opacity-90 active:scale-[0.98] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:active:scale-100 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-xl">{isSaving ? 'sync' : 'save'}</span>
+                {isSaving ? 'Menyimpan...' : 'Simpan Transaksi'}
+              </button>
+              <button 
+                onClick={onBack}
+                className="px-8 py-4 rounded-xl bg-transparent border-2 border-outline-variant/30 dark:border-white/20 text-on-surface-variant dark:text-slate-300 font-bold hover:bg-surface-container-low dark:hover:bg-white/10 active:scale-[0.98] transition-all cursor-pointer text-center"
+              >
+                Batalkan
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: Live Projection, Receipts Voucher Preview, and Budgets (5 cols on desktop) */}
+        <div className="lg:col-span-5 space-y-6">
+          {/* Pratinyau Voucher Transaksi (Interactive Receipt) */}
+          <div className="bg-gradient-to-br from-primary/5 via-primary-container/2 to-transparent dark:from-white/5 dark:via-white/[0.01] dark:to-transparent border border-outline-variant/10 dark:border-white/5 rounded-3xl p-6 relative overflow-hidden shadow-lg space-y-6">
+            {/* Glow indicator behind it based on transactionType */}
+            <div 
+              className="absolute -right-16 -top-16 w-48 h-48 rounded-full blur-3xl pointer-events-none transition-all duration-500"
+              style={{
+                background: transactionType === 'pengeluaran' 
+                  ? 'rgba(186, 26, 26, 0.12)' 
+                  : transactionType === 'pemasukan' 
+                    ? 'rgba(46, 125, 50, 0.12)' 
+                    : 'rgba(21, 101, 192, 0.12)'
+              }}
+            ></div>
+
+            <div className="flex justify-between items-center z-10 relative">
+              <span className="text-[10px] font-bold text-on-surface-variant dark:text-outline uppercase tracking-widest">Pratinjau Voucher</span>
+              <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase tracking-wider ${
+                transactionType === 'pengeluaran'
+                  ? 'bg-error-container/25 text-error dark:text-[#ffb4ab]'
+                  : transactionType === 'pemasukan'
+                    ? 'bg-emerald-500/10 text-emerald-500'
+                    : 'bg-primary-container/30 text-primary dark:text-[#a7c8ff]'
+              }`}>
+                {transactionType}
+              </span>
+            </div>
+
+            <div className="space-y-4 text-center py-6 border-b border-dashed border-outline-variant/20 dark:border-white/10 z-10 relative">
+              <div className="w-16 h-16 rounded-full bg-surface-container-low dark:bg-white/5 mx-auto flex items-center justify-center shadow-inner relative">
+                <span className="material-symbols-outlined text-3xl text-primary dark:text-[#a7c8ff]">
+                  {transactionType === 'transfer' ? 'swap_horiz' : (currentCategories.find(c => c.name === category)?.icon || 'receipt_long')}
+                </span>
+              </div>
+              
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold text-on-surface-variant dark:text-outline uppercase tracking-wider">Estimasi Jumlah</span>
+                <h3 className={`font-headline text-3xl font-extrabold tabular-nums transition-colors duration-300 ${
+                  transactionType === 'pengeluaran' 
+                    ? 'text-error dark:text-[#ffb4ab]' 
+                    : transactionType === 'pemasukan' 
+                      ? 'text-emerald-500 dark:text-emerald-400' 
+                      : 'text-primary dark:text-[#a7c8ff]'
+                }`}>
+                  {transactionType === 'pengeluaran' ? '-' : transactionType === 'pemasukan' ? '+' : ''}Rp {rawAmount.toLocaleString('id-ID')}
+                </h3>
+              </div>
+            </div>
+
+            <div className="space-y-3.5 z-10 relative text-left">
+              {transactionType === 'transfer' ? (
+                <>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-on-surface-variant dark:text-outline font-medium">Akun Pengirim (Dari)</span>
+                    <span className="font-semibold text-on-surface dark:text-white">{account || 'Belum dipilih'}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-on-surface-variant dark:text-outline font-medium">Akun Penerima (Ke)</span>
+                    <span className="font-semibold text-on-surface dark:text-white">{toAccount || 'Belum dipilih'}</span>
+                  </div>
+                </>
+              ) : (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-on-surface-variant dark:text-outline font-medium">Akun/Rekening</span>
+                  <span className="font-semibold text-on-surface dark:text-white">{account || 'Belum dipilih'}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-on-surface-variant dark:text-outline font-medium">Kategori</span>
+                <span className="font-semibold text-on-surface dark:text-white flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-sm">
+                    {transactionType === 'transfer' ? 'swap_horiz' : (currentCategories.find(c => c.name === category)?.icon || 'receipt_long')}
+                  </span>
+                  {transactionType === 'transfer' ? 'Transfer Saldo' : category}
+                </span>
+              </div>
+              <div className="flex justify-between items-center text-xs">
+                <span className="text-on-surface-variant dark:text-outline font-medium">Tanggal Transaksi</span>
+                <span className="font-semibold text-on-surface dark:text-white">{date ? new Date(date).toLocaleDateString('id-ID', { day: 'numeric', month: 'long', year: 'numeric' }) : '-'}</span>
+              </div>
+              <div className="flex justify-between items-start text-xs pt-2 border-t border-outline-variant/10 dark:border-white/5">
+                <span className="text-on-surface-variant dark:text-outline font-medium">Keterangan</span>
+                <span className="font-semibold text-on-surface dark:text-white max-w-[200px] text-right break-words italic">
+                  {desc ? `"${desc}"` : '"Transaksi tanpa deskripsi tambahan"'}
+                </span>
+              </div>
+            </div>
+
+            {/* Visual QR / Barcode Strip below for hyper-premium looks */}
+            <div className="pt-2 border-t border-outline-variant/10 dark:border-white/5 opacity-40 dark:opacity-30 flex flex-col items-center gap-1.5 z-10 relative">
+              {/* Simulated barcode lines */}
+              <div className="flex gap-[2px] h-6 w-full justify-center overflow-hidden">
+                {[1, 2.5, 1, 4, 1.5, 3, 1, 2.5, 1.5, 4, 1, 3.5, 1.5, 2, 1, 4, 1.5, 3, 1, 2.5, 1, 4, 1.5, 3, 1, 2.5].map((w, idx) => (
+                  <div 
+                    key={idx} 
+                    className="bg-on-surface dark:bg-white h-full" 
+                    style={{ width: `${w}px` }}
+                  />
+                ))}
+              </div>
+              <span className="font-mono text-[7px] tracking-[0.4em] uppercase text-on-surface dark:text-white">TX-{Math.random().toString(36).substring(2, 8).toUpperCase()}</span>
+            </div>
+          </div>
+
+          {/* Info Saldo & Anggaran - Sleek Integrated Glass Panel */}
+          {account && (
+            <div className="bg-primary/5 dark:bg-white/[0.02] border border-primary/10 dark:border-white/5 rounded-3xl p-6 space-y-4 shadow-md transition-all duration-300">
+              {transactionType === 'transfer' && toAccount ? (
+                <div className="space-y-3.5">
+                  {/* Akun Sumber */}
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-on-surface-variant dark:text-outline font-semibold flex items-center gap-1.5">
+                      <span className="material-symbols-outlined text-sm">remove_circle</span>
+                      Saldo Dari: {account}
+                    </span>
+                    <span className="font-bold tabular-nums text-on-surface dark:text-white flex items-center gap-1">
+                      <span>Rp {currentBalance.toLocaleString('id-ID')}</span>
+                      <span className="text-outline-variant dark:text-outline font-medium mx-1">→</span>
+                      <span className={estimatedBalance < 0 ? "text-error dark:text-[#ffb4ab]" : "text-primary dark:text-[#a7c8ff]"}>
+                        Rp {estimatedBalance.toLocaleString('id-ID')}
+                      </span>
+                    </span>
+                  </div>
+                  {/* Akun Tujuan */}
+                  {(() => {
+                    const toAccObj = accounts.find(a => a.name === toAccount);
+                    const toAccBalance = toAccObj ? toAccObj.balance : 0;
+                    const toAccEstimated = toAccBalance + rawAmount;
+                    return (
+                      <div className="flex justify-between items-center text-xs pt-3 border-t border-outline-variant/10 dark:border-white/5">
+                        <span className="text-on-surface-variant dark:text-outline font-semibold flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-sm text-emerald-500">add_circle</span>
+                          Saldo Ke: {toAccount}
+                        </span>
+                        <span className="font-bold tabular-nums text-on-surface dark:text-white flex items-center gap-1">
+                          <span>Rp {toAccBalance.toLocaleString('id-ID')}</span>
+                          <span className="text-outline-variant dark:text-outline font-medium mx-1">→</span>
+                          <span className="text-emerald-500 dark:text-emerald-400">
+                            Rp {toAccEstimated.toLocaleString('id-ID')}
+                          </span>
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
+                <div className="flex justify-between items-center text-xs">
+                  <span className="text-on-surface-variant dark:text-outline font-semibold flex items-center gap-1.5">
+                    <span className="material-symbols-outlined text-sm">account_balance_wallet</span>
+                    Saldo {account}
+                  </span>
+                  <span className="font-bold tabular-nums text-on-surface dark:text-white flex items-center gap-1">
+                    <span>Rp {currentBalance.toLocaleString('id-ID')}</span>
+                    <span className="text-outline-variant dark:text-outline font-medium mx-1">→</span>
+                    <span className={estimatedBalance < 0 ? "text-error dark:text-[#ffb4ab]" : "text-primary dark:text-[#a7c8ff]"}>
+                      Rp {estimatedBalance.toLocaleString('id-ID')}
+                    </span>
+                  </span>
+                </div>
+              )}
+              
+              {transactionType === 'pengeluaran' && (
+                <div className="pt-3 border-t border-outline-variant/10 dark:border-white/5">
+                  <div className="flex justify-between items-center text-[10px] uppercase tracking-wider text-on-surface-variant dark:text-outline font-bold mb-1.5">
+                    <span>Anggaran Kategori: {category}</span>
+                    <span>{usagePercent}% terpakai</span>
+                  </div>
+                  <div className="h-2 w-full bg-surface-container-high dark:bg-white/10 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-primary to-primary-container dark:from-[#a7c8ff] dark:to-[#82b1ff] rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(0,64,128,0.2)]" 
+                      style={{ width: `${usagePercent}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default FinanceAddTransaction;
