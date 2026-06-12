@@ -59,7 +59,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
       if (user.sheetUrl) {
         setGoogleSheetUrl(user.sheetUrl);
       } else {
-        setGoogleSheetUrl('');
+        setGoogleSheetUrl(import.meta.env.VITE_DEFAULT_SHEET_URL || 'https://script.google.com/macros/s/AKfycbzhD4TrmhBhb1484U7thVyEJDvZAFYtAbiG0bRK_jcWCiLKwy1EtBFCOQKikaj9l6yL2Q/exec');
       }
     }
   }, [user, setGoogleSheetUrl]);
@@ -113,9 +113,8 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ onBack, isDark, toggleDark })
   }, [accounts, assets]);
 
   useEffect(() => {
-    if (user?.sheetUrl) {
-      syncFromGoogleSheets();
-    }
+    // Selalu coba sync di awal jika ada URL (baik punya user maupun default demo URL)
+    syncFromGoogleSheets();
   }, [syncFromGoogleSheets, user?.sheetUrl]);
 
   useEffect(() => {
