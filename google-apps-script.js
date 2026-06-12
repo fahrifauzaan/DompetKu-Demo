@@ -24,7 +24,7 @@ const HEADERS = {
   Accounts: ['id', 'name', 'type', 'balance', 'currency', 'icon', 'startDate', 'valuationReminder', 'lastValuationUpdate'],
   'Fixed Income Investment': ['id', 'title', 'category', 'purchasePrice', 'currentValue', 'purchaseDate', 'location', 'icon', 'equity', 'notes', 'ticker', 'shares', 'avgCost', 'interestRate', 'maturityDate', 'subType'],
   BudgetCategories: ['id', 'name', 'icon', 'color', 'type', 'allocated', 'includeInTotal', 'alertAt'],
-  Debts: ['id', 'name', 'type', 'balance', 'interestRate', 'minPayment', 'icon'],
+  Debts: ['id', 'name', 'type', 'balance', 'interestRate', 'minPayment', 'icon', 'originalAmount', 'interestType', 'startDate', 'endDate', 'dueDate', 'lender', 'status'],
   Settings: ['key', 'value'],
   AssetsNonLiquid: ['id', 'title', 'category', 'subType', 'purchasePrice', 'currentValue', 'purchaseDate', 'location', 'icon', 'notes', 'specification', 'landArea', 'buildingArea', 'mfgYear', 'usefulLife', 'depreciationMethod', 'valuationReminder', 'lastValuationUpdate'],
   Saham: ['ID', 'Title', 'Ticker', 'Shares', 'Avg. Cost', 'Current Price', 'Purchase Date', 'Location', 'Icon', 'Notes'],
@@ -791,6 +791,71 @@ function migrateDatabaseForReminders() {
     }
   }
   return 'Migrasi Kolom Pengingat Selesai!';
+}
+
+/**
+ * Menyisipkan kolom-kolom komprehensif baru ke tab Debts.
+ * Jalankan fungsi ini sekali saja melalui tombol "Run" di editor Google Apps Script.
+ */
+function migrateDebtsColumns() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName('Debts');
+  if (!sheet) return 'Tab Debts tidak ditemukan';
+  
+  var data = sheet.getDataRange().getValues();
+  if (data.length === 0) return 'Data kosong';
+  
+  var headers = data[0].map(function(h) { return h.toString().trim(); });
+  var targetHeaders = HEADERS['Debts'];
+  
+  // Cari header yang kurang
+  var missingHeaders = [];
+  for (var i = 0; i < targetHeaders.length; i++) {
+    if (headers.indexOf(targetHeaders[i]) === -1) {
+      missingHeaders.push(targetHeaders[i]);
+    }
+  }
+  
+  if (missingHeaders.length > 0) {
+    // Tambahkan header yang kurang ke baris pertama
+    var lastCol = sheet.getLastColumn();
+    sheet.getRange(1, lastCol + 1, 1, missingHeaders.length).setValues([missingHeaders]);
+    
+    // Jika ada baris data lama, isi nilai default
+    var lastRow = sheet.getLastRow();
+    if (lastRow > 1) {
+      for (var m = 0; m < missingHeaders.length; m++) {
+        var colNum = lastCol + 1 + m;
+        var missingHeader = missingHeaders[m];
+        var fillVal = '';
+        
+        // Defaults:
+        if (missingHeader === 'status') {
+          fillVal = 'Aktif';
+        } else if (missingHeader === 'originalAmount') {
+          fillVal = '=INDIRECT("D"&ROW())'; // Assume originalAmount = balance for old rows to prevent division by zero
+        } else if (missingHeader === 'interestType') {
+          fillVal = 'Fixed/Flat';
+        } else if (missingHeader === 'startDate' || missingHeader === 'endDate') {
+          fillVal = new Date().toISOString().split('T')[0];
+        } else if (missingHeader === 'dueDate') {
+          fillVal = '1';
+        }
+        
+        var range = sheet.getRange(2, colNum, lastRow - 1, 1);
+        var vals = [];
+        for (var r = 2; r <= lastRow; r++) {
+          vals.push([fillVal]);
+        }
+        range.setValues(vals);
+      }
+    }
+    Logger.log('Tab "Debts" berhasil di-migrasi. Menambahkan kolom: ' + missingHeaders.join(', '));
+    return 'Migrasi Kolom Debts Selesai! ' + missingHeaders.join(', ');
+  } else {
+    Logger.log('Tab "Debts" sudah up-to-date.');
+    return 'Tab Debts sudah up-to-date.';
+  }
 }
 
 // ===================== FIXED INCOME MULTI-TABLE HANDLERS =====================

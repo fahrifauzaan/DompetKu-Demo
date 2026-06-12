@@ -93,6 +93,13 @@ export interface Debt {
   interestRate: number;
   minPayment: number;
   icon: string;
+  originalAmount?: number;
+  interestType?: string;
+  startDate?: string;
+  endDate?: string;
+  dueDate?: number;
+  lender?: string;
+  status?: string;
 }
 
 export interface Setting {

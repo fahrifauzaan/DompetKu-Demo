@@ -9,6 +9,13 @@ export interface Debt {
   interestRate: number;
   minPayment: number;
   icon: string;
+  originalAmount?: number;
+  interestType?: string;
+  startDate?: string;
+  endDate?: string;
+  dueDate?: number;
+  lender?: string;
+  status?: string;
 }
 
 interface DebtFormModalProps {
@@ -35,6 +42,13 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
     interestRate: 0,
     minPayment: 0,
     icon: DEBT_TYPES[0].icon,
+    originalAmount: 0,
+    interestType: 'Fixed/Flat',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+    dueDate: 1,
+    lender: '',
+    status: 'Aktif',
   });
 
   useEffect(() => {
@@ -46,6 +60,13 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
         interestRate: editingDebt.interestRate,
         minPayment: editingDebt.minPayment,
         icon: editingDebt.icon,
+        originalAmount: editingDebt.originalAmount || editingDebt.balance || 0,
+        interestType: editingDebt.interestType || 'Fixed/Flat',
+        startDate: editingDebt.startDate || new Date().toISOString().split('T')[0],
+        endDate: editingDebt.endDate || new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        dueDate: editingDebt.dueDate || 1,
+        lender: editingDebt.lender || '',
+        status: editingDebt.status || 'Aktif',
       });
     } else {
       setFormData({
@@ -55,6 +76,13 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
         interestRate: 0,
         minPayment: 0,
         icon: DEBT_TYPES[0].icon,
+        originalAmount: 0,
+        interestType: 'Fixed/Flat',
+        startDate: new Date().toISOString().split('T')[0],
+        endDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0],
+        dueDate: 1,
+        lender: '',
+        status: 'Aktif',
       });
     }
   }, [editingDebt, isOpen]);
@@ -83,9 +111,9 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
             initial={{ scale: 0.95, opacity: 0, y: 20 }}
             animate={{ scale: 1, opacity: 1, y: 0 }}
             exit={{ scale: 0.95, opacity: 0, y: 20 }}
-            className="relative w-full max-w-lg bg-white dark:bg-[#191c1e] rounded-3xl shadow-2xl overflow-hidden border border-slate-200/50 dark:border-white/10"
+            className="relative w-full max-w-2xl bg-white dark:bg-[#191c1e] rounded-3xl shadow-2xl overflow-hidden border border-slate-200/50 dark:border-white/10 max-h-[90vh] flex flex-col"
           >
-            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/5">
+            <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/5 shrink-0">
               <div>
                 <h3 className="text-xl font-bold text-blue-950 dark:text-white font-headline">
                   {editingDebt ? 'Edit Instrumen Utang' : 'Tambah Utang Baru'}
@@ -99,34 +127,108 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-5">
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Nama Liabilitas</label>
-                <input
-                  required
-                  type="text"
-                  placeholder="Contoh: Kartu Kredit Mandiri"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
-                />
+            <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Nama Liabilitas</label>
+                  <input
+                    required
+                    type="text"
+                    placeholder="Contoh: KPR BCA"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Institusi / Bank (Lender)</label>
+                  <input
+                    type="text"
+                    placeholder="Contoh: Bank BCA"
+                    value={formData.lender}
+                    onChange={(e) => setFormData({ ...formData, lender: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Tipe</label>
-                  <select
-                    value={formData.type}
-                    onChange={(e) => {
-                      const type = DEBT_TYPES.find(t => t.label === e.target.value);
-                      setFormData({ ...formData, type: e.target.value, icon: type?.icon || 'payments' });
-                    }}
-                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white appearance-none"
-                  >
-                    {DEBT_TYPES.map(t => (
-                      <option key={t.label} value={t.label}>{t.label}</option>
-                    ))}
-                  </select>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Tipe Utang</label>
+                  <div className="relative">
+                    <select
+                      value={formData.type}
+                      onChange={(e) => {
+                        const type = DEBT_TYPES.find(t => t.label === e.target.value);
+                        setFormData({ ...formData, type: e.target.value, icon: type?.icon || 'payments' });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white appearance-none"
+                    >
+                      {DEBT_TYPES.map(t => (
+                        <option key={t.label} value={t.label}>{t.label}</option>
+                      ))}
+                    </select>
+                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Status</label>
+                  <div className="relative">
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white appearance-none"
+                    >
+                      <option value="Aktif">Aktif</option>
+                      <option value="Lunas">Lunas</option>
+                      <option value="Macet">Macet / Default</option>
+                    </select>
+                    <span className="material-symbols-outlined absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100 dark:border-white/5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Plafon Awal (Rp)</label>
+                  <input
+                    type="number"
+                    placeholder="Contoh: 50000000"
+                    value={formData.originalAmount || ''}
+                    onChange={(e) => setFormData({ ...formData, originalAmount: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1 flex items-center justify-between">
+                    <span>Sisa Pokok (Rp)</span>
+                    <span className="text-primary dark:text-[#a7c8ff]">*Wajib</span>
+                  </label>
+                  <input
+                    required
+                    type="number"
+                    placeholder="10000000"
+                    value={formData.balance === 0 ? '' : formData.balance}
+                    onChange={(e) => setFormData({ ...formData, balance: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-primary/5 border border-primary/20 rounded-xl px-4 py-3 text-sm font-bold text-primary dark:text-[#a7c8ff] focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Tipe Bunga</label>
+                  <div className="relative">
+                    <select
+                      value={formData.interestType}
+                      onChange={(e) => setFormData({ ...formData, interestType: e.target.value })}
+                      className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white appearance-none"
+                    >
+                      <option value="Fixed/Flat">Fixed / Flat</option>
+                      <option value="Floating/Efektif">Floating / Efektif</option>
+                    </select>
+                    <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none text-sm">expand_more</span>
+                  </div>
                 </div>
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Bunga (APR %)</label>
@@ -135,38 +237,58 @@ const DebtFormModal: React.FC<DebtFormModalProps> = ({ isOpen, onClose, onSave, 
                     type="number"
                     step="0.1"
                     placeholder="2.5"
-                    value={formData.interestRate || ''}
-                    onChange={(e) => setFormData({ ...formData, interestRate: parseFloat(e.target.value) })}
+                    value={formData.interestRate === 0 ? '' : formData.interestRate}
+                    onChange={(e) => setFormData({ ...formData, interestRate: parseFloat(e.target.value) || 0 })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Cicilan /Bulan (Rp)</label>
+                  <input
+                    required
+                    type="number"
+                    placeholder="500000"
+                    value={formData.minPayment === 0 ? '' : formData.minPayment}
+                    onChange={(e) => setFormData({ ...formData, minPayment: parseInt(e.target.value) || 0 })}
                     className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
                   />
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Saldo Saat Ini (Rp)</label>
-                <input
-                  required
-                  type="number"
-                  placeholder="10000000"
-                  value={formData.balance || ''}
-                  onChange={(e) => setFormData({ ...formData, balance: parseInt(e.target.value) })}
-                  className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm font-bold text-primary dark:text-[#a7c8ff] focus:outline-none focus:ring-2 focus:ring-primary/20"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-white/5">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Tanggal Mulai</label>
+                  <input
+                    type="date"
+                    value={formData.startDate}
+                    onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Target Lunas / Tenor</label>
+                  <input
+                    type="date"
+                    value={formData.endDate}
+                    onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Tgl Jatuh Tempo (1-31)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    placeholder="15"
+                    value={formData.dueDate || ''}
+                    onChange={(e) => setFormData({ ...formData, dueDate: parseInt(e.target.value) || 1 })}
+                    className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
               </div>
 
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 ml-1">Cicilan Minimum (Rp)</label>
-                <input
-                  required
-                  type="number"
-                  placeholder="500000"
-                  value={formData.minPayment || ''}
-                  onChange={(e) => setFormData({ ...formData, minPayment: parseInt(e.target.value) })}
-                  className="w-full bg-slate-50 dark:bg-white/5 border border-slate-200 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
-                />
-              </div>
-
-              <div className="pt-4 flex gap-3">
+              <div className="pt-4 flex gap-3 shrink-0">
                 <button
                   type="button"
                   onClick={onClose}

@@ -397,10 +397,11 @@ const FinanceDebts: React.FC<FinanceDebtsProps> = ({ onShowCTA, onNavigate }) =>
                 <table className="w-full text-left whitespace-nowrap lg:whitespace-normal">
                   <thead className="bg-surface-container-low dark:bg-white/5">
                     <tr>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Nama &amp; Tipe</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-right">Saldo</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-center">Bunga (APR)</th>
-                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-right">Cicilan Min</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Instrumen</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline">Status</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-right">Sisa Pokok</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-center">Bunga</th>
+                      <th className="px-6 py-4 text-[10px] font-bold uppercase tracking-widest text-on-surface-variant dark:text-outline text-right">Cicilan/Bulan</th>
                       <th className="px-6 py-4 text-right"></th>
                     </tr>
                   </thead>
@@ -417,14 +418,44 @@ const FinanceDebts: React.FC<FinanceDebtsProps> = ({ onShowCTA, onNavigate }) =>
                               <span className="material-symbols-outlined text-base text-slate-500 dark:text-slate-400">{debt.icon}</span>
                             </div>
                             <div>
-                              <div className="font-bold text-sm dark:text-white">{debt.name}</div>
+                              <div className="font-bold text-sm dark:text-white flex items-center gap-2">
+                                {debt.name} 
+                                {debt.lender && <span className="text-[10px] font-medium bg-surface-container-high dark:bg-white/10 px-2 py-0.5 rounded-md text-on-surface-variant dark:text-slate-300">{debt.lender}</span>}
+                              </div>
                               <div className="text-[10px] lg:text-xs text-on-surface-variant dark:text-outline font-medium">{debt.type}</div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-right tabular-nums font-bold text-sm lg:text-base dark:text-white">Rp {debt.balance.toLocaleString('id-ID')}</td>
-                        <td className="px-6 py-4 text-center tabular-nums text-sm lg:text-base font-bold text-error dark:text-[#ffb4ab]">{debt.interestRate}%</td>
-                        <td className="px-6 py-4 text-right tabular-nums text-sm lg:text-base text-on-surface-variant dark:text-slate-300">Rp {debt.minPayment.toLocaleString('id-ID')}</td>
+                        <td className="px-6 py-4">
+                          <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded-md ${
+                            debt.status === 'Lunas' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                            debt.status === 'Macet' ? 'bg-error/10 text-error dark:bg-error/20 dark:text-[#ffb4ab]' :
+                            'bg-primary/10 text-primary dark:bg-[#a7c8ff]/10 dark:text-[#a7c8ff]'
+                          }`}>
+                            {debt.status || 'Aktif'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="font-bold text-sm lg:text-base dark:text-white tabular-nums">Rp {debt.balance.toLocaleString('id-ID')}</div>
+                          {(debt.originalAmount ?? 0) > 0 && (
+                            <div className="w-full mt-1 flex flex-col items-end gap-1">
+                              <div className="w-24 h-1.5 bg-surface-container-highest dark:bg-white/10 rounded-full overflow-hidden">
+                                <div className="h-full bg-primary dark:bg-[#a7c8ff] rounded-full" style={{ width: `${Math.min(100, Math.max(0, 100 - (debt.balance / (debt.originalAmount || 1)) * 100))}%` }}></div>
+                              </div>
+                              <div className="text-[9px] font-medium text-on-surface-variant dark:text-outline">
+                                Lunas {Math.round(100 - (debt.balance / (debt.originalAmount || 1)) * 100)}% dari Rp {(debt.originalAmount ?? 0).toLocaleString('id-ID')}
+                              </div>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-center">
+                          <div className="tabular-nums text-sm lg:text-base font-bold text-error dark:text-[#ffb4ab]">{debt.interestRate}%</div>
+                          <div className="text-[10px] font-medium text-on-surface-variant dark:text-outline">{debt.interestType || 'Fixed/Flat'}</div>
+                        </td>
+                        <td className="px-6 py-4 text-right">
+                          <div className="tabular-nums text-sm lg:text-base text-on-surface-variant dark:text-slate-300">Rp {debt.minPayment.toLocaleString('id-ID')}</div>
+                          {debt.dueDate && <div className="text-[10px] font-medium text-tertiary-fixed">Jatuh Tempo: Tgl {debt.dueDate}</div>}
+                        </td>
                         <td className="px-6 py-4 text-right relative">
                           <button 
                             onClick={() => setShowActionId(showActionId === debt.id ? null : debt.id)} 
