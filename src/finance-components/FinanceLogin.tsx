@@ -343,21 +343,13 @@ const FinanceLogin: React.FC = () => {
                   {/* Demo Account Quick Pickers */}
                   <div className="mt-8">
                     <h5 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">Akun Demo Cepat</h5>
-                    <div className="grid grid-cols-2 gap-2">
+                    <div className="grid grid-cols-1 gap-2">
                       <button 
                         onClick={() => selectDemoAccount(import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com', 'Admin Demo')}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-left border border-transparent hover:border-blue-500/20 text-xs transition-all flex flex-col justify-center gap-0.5 cursor-pointer"
+                        className="py-3 px-4 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-center border border-transparent hover:border-blue-500/20 text-sm transition-all flex flex-col items-center justify-center gap-1 cursor-pointer"
                       >
-                        <span className="font-bold text-slate-700 dark:text-slate-300 leading-none truncate">Admin Demo</span>
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-none truncate">{import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com'}</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => selectDemoAccount('user@example.com', 'User Demo')}
-                        className="py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-left border border-transparent hover:border-blue-500/20 text-xs transition-all flex flex-col justify-center gap-0.5 cursor-pointer"
-                      >
-                        <span className="font-bold text-slate-700 dark:text-slate-300 leading-none truncate">Sign Up Demo</span>
-                        <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-none truncate">Sign Up via Email</span>
+                        <span className="font-bold text-slate-700 dark:text-slate-300 leading-none truncate">Gunakan Akun Demo Publik</span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-none truncate">Lihat data contoh & Coba Fitur secara langsung</span>
                       </button>
                     </div>
                   </div>
