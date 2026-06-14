@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { TRANSACTIONS_DATA, DEBTS_DATA } from '../finance-components/FinanceData';
 import { useAuthStore } from './useAuthStore';
+import { addRowToSheet, updateRowInSheet, deleteRowFromSheet, fetchAllDataFromSheets } from '../services/googleApiService';
 
 // ===================== TYPES =====================
 
@@ -118,11 +119,16 @@ interface FinanceState {
   debts: Debt[];
   settings: Setting[];
   googleSheetUrl: string;
+  googleAccessToken: string | null;
+  spreadsheetId: string | null;
   isSyncing: boolean;
   lastSyncAt: string | null;
+  syncError: string | null;
 
   // Actions — Google Sheets URL
   setGoogleSheetUrl: (url: string) => void;
+  setGoogleCredentials: (token: string, sheetId: string) => void;
+  setSpreadsheetId: (sheetId: string) => void;
 
   // Actions — Generic CRUD
   addTransaction: (tx: Omit<Transaction, 'id'>) => Promise<void>;
@@ -155,6 +161,7 @@ interface FinanceState {
 
   // Actions — Full Sync
   syncFromGoogleSheets: () => Promise<void>;
+  resetFinance: () => void;
 }
 
 // ===================== HELPERS =====================
@@ -191,20 +198,61 @@ export function formatDateString(dateStr: any): string {
   return str;
 }
 
+export function parseNumber(val: any): number {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return val;
+  if (typeof val === 'string') {
+    let s = val.toUpperCase().replace(/RP/g, '').replace(/IDR/g, '').replace(/\s/g, '');
+    // If we only have numbers, minus, dots and commas left:
+    // Typical IDR: 10.000.000,00 -> remove dots, replace comma with dot -> 10000000.00
+    // Typical US: 10,000,000.00 -> if there is a dot AND comma, we need care. But assume IDR mostly.
+    
+    // Simplest approach for IDR:
+    const dotCount = (s.match(/\./g) || []).length;
+    const commaCount = (s.match(/,/g) || []).length;
+    
+    if (dotCount > 0 && commaCount === 1) {
+      // Like 10.000.000,50
+      s = s.replace(/\./g, '').replace(/,/g, '.');
+    } else if (commaCount > 0 && dotCount === 1) {
+      // Like 10,000,000.50 (US format)
+      s = s.replace(/,/g, '');
+    } else if (dotCount > 0 && commaCount === 0) {
+      // Like 10.000.000 (IDR whole)
+      s = s.replace(/\./g, '');
+    } else if (commaCount > 0 && dotCount === 0) {
+      // Like 10,000 (could be US thousands or IDR decimal, assume IDR decimal if 1 comma)
+      s = s.replace(/,/g, '.');
+    }
+    
+    const parsed = Number(s);
+    return isNaN(parsed) ? 0 : parsed;
+  }
+  return 0;
+}
+
 function generateId(): string {
   return Math.random().toString(36).substring(2, 9) + Date.now().toString(36);
 }
 
-async function postToSheet(url: string, sheet: string, action: string, data: Record<string, unknown>) {
-  if (!url) return;
+async function postToSheet(url: string, token: string | null, spreadsheetId: string | null, sheet: string, action: string, data: Record<string, unknown>) {
   try {
+    if (token && spreadsheetId) {
+      if (action === 'add') await addRowToSheet(token, spreadsheetId, sheet, data);
+      else if (action === 'update') await updateRowInSheet(token, spreadsheetId, sheet, data);
+      else if (action === 'delete') await deleteRowFromSheet(token, spreadsheetId, sheet, String(data.id || data.key));
+      console.log(`[FinanceStore] ✅ ${action} → ${sheet} synced via API`);
+      return;
+    }
+
+    if (!url) return;
     await fetch(url, {
       method: 'POST',
       mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, sheet, data })
     });
-    console.log(`[FinanceStore] ✅ ${action} → ${sheet} synced`);
+    console.log(`[FinanceStore] ✅ ${action} → ${sheet} synced via Macro`);
   } catch (error) {
     console.error(`[FinanceStore] ❌ Gagal sync ${sheet}:`, error);
   }
@@ -240,6 +288,12 @@ function calculateDepreciatedValue(purchasePrice: number, purchaseDateStr: strin
   
   try {
     const purchaseDate = new Date(purchaseDateStr);
+    
+    // Safety check: if date is invalid, we cannot calculate depreciation
+    if (isNaN(purchaseDate.getTime())) {
+      return purchasePrice;
+    }
+
     const now = new Date();
     
     const diffYears = now.getFullYear() - purchaseDate.getFullYear();
@@ -312,8 +366,11 @@ export const useFinanceStore = create<FinanceState>()(
       debts: DEBTS_DATA as Debt[],
       settings: DEFAULT_SETTINGS,
       googleSheetUrl: 'https://script.google.com/macros/s/AKfycbzhD4TrmhBhb1484U7thVyEJDvZAFYtAbiG0bRK_jcWCiLKwy1EtBFCOQKikaj9l6yL2Q/exec',
+      googleAccessToken: null,
+      spreadsheetId: null,
       isSyncing: false,
       lastSyncAt: null,
+      syncError: null,
       monthlyBudgets: {},
       reportPrintMonth: new Date().getMonth(),
       reportPrintYear: new Date().getFullYear(),
@@ -321,48 +378,92 @@ export const useFinanceStore = create<FinanceState>()(
       ledgerPrintTransactions: [],
 
       // ---- URL Management ----
-      setGoogleSheetUrl: (url) => set({ googleSheetUrl: url }),
+      setGoogleSheetUrl: (url) => {
+        set({ googleSheetUrl: url });
+        try {
+          import('./useAuthStore').then(module => {
+            const state = module.useAuthStore.getState();
+            if (state.user && state.user.email !== (import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com')) {
+              state.updateUserSheetUrl(state.user.email, url);
+            }
+          });
+        } catch (e) {
+          console.error(e);
+        }
+      },
+      setGoogleCredentials: (token, sheetId) => {
+        let cleanId = sheetId;
+        if (sheetId && sheetId.includes('/d/')) {
+          const match = sheetId.match(/\/[d]\/([a-zA-Z0-9-_]+)/);
+          if (match) cleanId = match[1];
+        }
+        set({ googleAccessToken: token, spreadsheetId: cleanId });
+        try {
+          import('./useAuthStore').then(module => {
+            const state = module.useAuthStore.getState();
+            if (state.user && state.user.email !== (import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com')) {
+              state.updateUserSpreadsheetId(state.user.email, cleanId);
+            }
+          });
+        } catch (e) { console.error(e); }
+      },
+      setSpreadsheetId: (sheetId) => {
+        let cleanId = sheetId;
+        if (sheetId && sheetId.includes('/d/')) {
+          const match = sheetId.match(/\/[d]\/([a-zA-Z0-9-_]+)/);
+          if (match) cleanId = match[1];
+        }
+        set({ spreadsheetId: cleanId });
+        try {
+          import('./useAuthStore').then(module => {
+            const state = module.useAuthStore.getState();
+            if (state.user && state.user.email !== (import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com')) {
+              state.updateUserSpreadsheetId(state.user.email, cleanId);
+            }
+          });
+        } catch (e) { console.error(e); }
+      },
 
       // ---- TRANSACTIONS ----
       addTransaction: async (transaction) => {
         const newTx = { ...transaction, id: generateId() } as Transaction;
         set((state) => ({ transactions: [newTx, ...state.transactions] }));
-        await postToSheet(get().googleSheetUrl, 'Transactions', 'add', newTx as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Transactions', 'add', newTx as unknown as Record<string, unknown>);
       },
 
       updateTransaction: async (transaction) => {
         set((state) => ({
           transactions: state.transactions.map(t => t.id === transaction.id ? transaction : t)
         }));
-        await postToSheet(get().googleSheetUrl, 'Transactions', 'update', transaction as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Transactions', 'update', transaction as unknown as Record<string, unknown>);
       },
 
       deleteTransaction: async (id) => {
         set((state) => ({
           transactions: state.transactions.filter(t => t.id !== id)
         }));
-        await postToSheet(get().googleSheetUrl, 'Transactions', 'delete', { id });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Transactions', 'delete', { id });
       },
 
       // ---- ACCOUNTS ----
       addAccount: async (account) => {
         const newAcc = { ...account, id: generateId() } as Account;
         set((state) => ({ accounts: [...state.accounts, newAcc] }));
-        await postToSheet(get().googleSheetUrl, 'Accounts', 'add', newAcc as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Accounts', 'add', newAcc as unknown as Record<string, unknown>);
       },
 
       updateAccount: async (account) => {
         set((state) => ({
           accounts: state.accounts.map(a => a.id === account.id ? account : a)
         }));
-        await postToSheet(get().googleSheetUrl, 'Accounts', 'update', account as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Accounts', 'update', account as unknown as Record<string, unknown>);
       },
 
       deleteAccount: async (id) => {
         set((state) => ({
           accounts: state.accounts.filter(a => a.id !== id)
         }));
-        await postToSheet(get().googleSheetUrl, 'Accounts', 'delete', { id });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Accounts', 'delete', { id });
       },
 
       // ---- ASSETS ----
@@ -370,7 +471,7 @@ export const useFinanceStore = create<FinanceState>()(
         const newAsset = { ...asset, id: generateId() } as Asset;
         set((state) => ({ assets: [...state.assets, newAsset] }));
         const sheet = getAssetSheetName(newAsset.category, newAsset.subType);
-        await postToSheet(get().googleSheetUrl, sheet, 'add', formatAssetForSheet(newAsset));
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, sheet, 'add', formatAssetForSheet(newAsset));
       },
 
       updateAsset: async (asset) => {
@@ -378,7 +479,7 @@ export const useFinanceStore = create<FinanceState>()(
           assets: state.assets.map(a => a.id === asset.id ? asset : a)
         }));
         const sheet = getAssetSheetName(asset.category, asset.subType);
-        await postToSheet(get().googleSheetUrl, sheet, 'update', formatAssetForSheet(asset));
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, sheet, 'update', formatAssetForSheet(asset));
       },
 
       deleteAsset: async (id) => {
@@ -388,57 +489,64 @@ export const useFinanceStore = create<FinanceState>()(
           assets: state.assets.filter(a => a.id !== id)
         }));
         const sheet = getAssetSheetName(asset.category, asset.subType);
-        await postToSheet(get().googleSheetUrl, sheet, 'delete', { id });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, sheet, 'delete', { id });
       },
 
       // ---- BUDGET CATEGORIES ----
       addBudgetCategory: async (cat) => {
         const newCat = { ...cat, id: generateId() } as BudgetCategory;
         set((state) => ({ budgetCategories: [...state.budgetCategories, newCat] }));
-        await postToSheet(get().googleSheetUrl, 'BudgetCategories', 'add', newCat as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'BudgetCategories', 'add', newCat as unknown as Record<string, unknown>);
       },
 
       updateBudgetCategory: async (cat) => {
         set((state) => ({
           budgetCategories: state.budgetCategories.map(c => c.id === cat.id ? cat : c)
         }));
-        await postToSheet(get().googleSheetUrl, 'BudgetCategories', 'update', cat as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'BudgetCategories', 'update', cat as unknown as Record<string, unknown>);
       },
 
       deleteBudgetCategory: async (id) => {
         set((state) => ({
           budgetCategories: state.budgetCategories.filter(c => c.id !== id)
         }));
-        await postToSheet(get().googleSheetUrl, 'BudgetCategories', 'delete', { id });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'BudgetCategories', 'delete', { id });
       },
 
       // ---- DEBTS ----
       addDebt: async (debt) => {
         const newDebt = { ...debt, id: generateId() } as Debt;
         set((state) => ({ debts: [...state.debts, newDebt] }));
-        await postToSheet(get().googleSheetUrl, 'Debts', 'add', newDebt as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Debts', 'add', newDebt as unknown as Record<string, unknown>);
       },
 
       updateDebt: async (debt) => {
         set((state) => ({
           debts: state.debts.map(d => d.id === debt.id ? debt : d)
         }));
-        await postToSheet(get().googleSheetUrl, 'Debts', 'update', debt as unknown as Record<string, unknown>);
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Debts', 'update', debt as unknown as Record<string, unknown>);
       },
 
       deleteDebt: async (id) => {
         set((state) => ({
           debts: state.debts.filter(d => d.id !== id)
         }));
-        await postToSheet(get().googleSheetUrl, 'Debts', 'delete', { id });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Debts', 'delete', { id });
       },
 
-      // ---- SETTINGS ----
       updateSettings: async (newSettings) => {
+        const oldSettings = get().settings;
         set({ settings: newSettings });
-        // Sync each setting individually
-        for (const setting of newSettings) {
-          await postToSheet(get().googleSheetUrl, 'Settings', 'update', setting as unknown as Record<string, unknown>);
+        
+        // Find which settings actually changed or are new
+        const changedSettings = newSettings.filter(n => {
+          const old = oldSettings.find(o => o.key === n.key);
+          return !old || old.value !== n.value;
+        });
+
+        // Only sync the changed/new settings to Google Sheets
+        for (const setting of changedSettings) {
+          await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Settings', 'update', setting as unknown as Record<string, unknown>);
         }
       },
 
@@ -473,18 +581,23 @@ export const useFinanceStore = create<FinanceState>()(
         }
         
         set({ settings: newSettings });
-        await postToSheet(get().googleSheetUrl, 'Settings', action, { key: 'monthlyBudgets', value: stringified });
+        await postToSheet(get().googleSheetUrl, get().googleAccessToken, get().spreadsheetId, 'Settings', action, { key: 'monthlyBudgets', value: stringified });
       },
 
       // ---- FULL SYNC (Pull dari Google Sheets) ----
       syncFromGoogleSheets: async () => {
-        const { googleSheetUrl } = get();
-        if (!googleSheetUrl) return;
+        const { googleSheetUrl, googleAccessToken, spreadsheetId } = get();
+        if (!googleSheetUrl && !spreadsheetId) return;
 
-        set({ isSyncing: true });
+        set({ isSyncing: true, syncError: null });
         try {
-          const response = await fetch(`${googleSheetUrl}?sheet=all`);
-          const result = await response.json();
+          let result;
+          if (googleAccessToken && spreadsheetId) {
+            result = await fetchAllDataFromSheets(googleAccessToken, spreadsheetId);
+          } else {
+            const response = await fetch(`${googleSheetUrl}?sheet=all`);
+            result = await response.json();
+          }
 
           if (result && result.success && result.data) {
             const updates: Partial<FinanceState> = {};
@@ -505,13 +618,13 @@ export const useFinanceStore = create<FinanceState>()(
             if (result.data.Transactions) {
               updates.transactions = result.data.Transactions.map((t: Record<string, unknown>) => ({
                 ...t,
-                amount: Number(t.amount) || 0,
+                amount: parseNumber(t.amount),
               })).reverse();
             }
             if (result.data.Accounts) {
               updates.accounts = result.data.Accounts.map((a: Record<string, unknown>) => ({
                 ...a,
-                balance: Number(a.balance) || 0,
+                balance: parseNumber(a.balance),
                 valuationReminder: a.valuationReminder === true || a.valuationReminder === 'TRUE' || a.valuationReminder === 'true',
                 lastValuationUpdate: a.lastValuationUpdate ? String(a.lastValuationUpdate) : undefined
               }));
@@ -545,13 +658,13 @@ export const useFinanceStore = create<FinanceState>()(
                     ...a,
                     id,
                     title,
-                    purchasePrice: Number(a.purchasePrice || getVal(a, ['Principal', 'purchasePrice'])) || 0,
-                    currentValue: Number(a.currentValue !== undefined ? a.currentValue : getVal(a, ['Principal', 'purchasePrice'])) || 0,
-                    equity: Number(a.equity) || 100,
+                    purchasePrice: parseNumber(a.purchasePrice !== undefined && a.purchasePrice !== '' ? a.purchasePrice : getVal(a, ['Principal', 'purchasePrice'])),
+                    currentValue: parseNumber(a.currentValue !== undefined && a.currentValue !== '' ? a.currentValue : getVal(a, ['Principal', 'purchasePrice'])),
+                    equity: parseNumber(a.equity) || 100,
                     purchaseDate: a.purchaseDate ? formatDateString(a.purchaseDate) : (getVal(a, ['Issue Date', 'purchaseDate']) ? formatDateString(getVal(a, ['Issue Date', 'purchaseDate'])) : undefined),
-                    shares: a.shares !== undefined && a.shares !== '' ? Number(a.shares) : undefined,
-                    avgCost: a.avgCost !== undefined && a.avgCost !== '' ? Number(a.avgCost) : undefined,
-                    currentPrice: a.currentPrice !== undefined && a.currentPrice !== '' ? Number(a.currentPrice) : undefined,
+                    shares: a.shares !== undefined && a.shares !== '' ? parseNumber(a.shares) : undefined,
+                    avgCost: a.avgCost !== undefined && a.avgCost !== '' ? parseNumber(a.avgCost) : undefined,
+                    currentPrice: a.currentPrice !== undefined && a.currentPrice !== '' ? parseNumber(a.currentPrice) : undefined,
                     interestRate: interestRate || 6.4,
                     ticker: a.ticker !== undefined && a.ticker !== '' ? String(a.ticker) : String(getVal(a, ['Seri', 'Ticker', 'ticker']) || ''),
                     subType: a.subType !== undefined && a.subType !== '' ? String(a.subType) : 'sbn',
@@ -561,13 +674,13 @@ export const useFinanceStore = create<FinanceState>()(
             }
             if (result.data.AssetsNonLiquid) {
               parsedAssets.push(...result.data.AssetsNonLiquid.map((a: Record<string, unknown>) => {
-                const purchasePrice = Number(a.purchasePrice) || 0;
-                const usefulLife = Number(a.usefulLife) || 10;
+                const purchasePrice = parseNumber(a.purchasePrice);
+                const usefulLife = parseNumber(a.usefulLife) || 10;
                 const method = String(a.depreciationMethod || 'Tidak Menyusut');
                 const purchaseDate = formatDateString(a.purchaseDate || new Date().toISOString());
 
                 // Properties appreciate, Vehicles/Personal Assets deprecate
-                let currentValue = Number(a.currentValue) || purchasePrice;
+                let currentValue = a.currentValue !== undefined && a.currentValue !== '' ? parseNumber(a.currentValue) : purchasePrice;
                 if (a.category === 'kendaraan' || a.category === 'koleksi') {
                   currentValue = calculateDepreciatedValue(purchasePrice, purchaseDate, usefulLife, method);
                 }
@@ -577,11 +690,11 @@ export const useFinanceStore = create<FinanceState>()(
                   purchasePrice,
                   currentValue,
                   purchaseDate,
-                  equity: Number(a.equity) || 100,
+                  equity: parseNumber(a.equity) || 100,
                   usefulLife,
-                  landArea: a.landArea !== undefined && a.landArea !== '' ? Number(a.landArea) : undefined,
-                  buildingArea: a.buildingArea !== undefined && a.buildingArea !== '' ? Number(a.buildingArea) : undefined,
-                  mfgYear: a.mfgYear !== undefined && a.mfgYear !== '' ? Number(a.mfgYear) : undefined,
+                  landArea: a.landArea !== undefined && a.landArea !== '' ? parseNumber(a.landArea) : undefined,
+                  buildingArea: a.buildingArea !== undefined && a.buildingArea !== '' ? parseNumber(a.buildingArea) : undefined,
+                  mfgYear: a.mfgYear !== undefined && a.mfgYear !== '' ? parseNumber(a.mfgYear) : undefined,
                   subType: a.subType !== undefined && a.subType !== '' ? String(a.subType) : undefined,
                   depreciationMethod: method as any,
                   valuationReminder: a.valuationReminder === true || a.valuationReminder === 'TRUE' || a.valuationReminder === 'true',
@@ -596,9 +709,9 @@ export const useFinanceStore = create<FinanceState>()(
                 const id = String(getVal(a, ['id', 'ID']) || generateId());
                 const title = String(getVal(a, ['title', 'Title']) || '');
                 const ticker = String(getVal(a, ['ticker', 'Ticker']) || '');
-                const shares = Number(getVal(a, ['shares', 'Shares'])) || 0;
-                const avgCost = Number(getVal(a, ['avgCost', 'Avg. Cost', 'avg_cost'])) || 0;
-                const currentPrice = Number(getVal(a, ['currentPrice', 'Current Price', 'current_price'])) || 0;
+                const shares = parseNumber(getVal(a, ['shares', 'Shares']));
+                const avgCost = parseNumber(getVal(a, ['avgCost', 'Avg. Cost', 'avg_cost']));
+                const currentPrice = parseNumber(getVal(a, ['currentPrice', 'Current Price', 'current_price']));
                 const purchaseDate = formatDateString(getVal(a, ['purchaseDate', 'Purchase Date', 'date']) || '');
                 const location = String(getVal(a, ['location', 'Location']) || '');
                 const icon = String(getVal(a, ['icon', 'Icon']) || 'show_chart');
@@ -629,9 +742,9 @@ export const useFinanceStore = create<FinanceState>()(
                 const id = String(getVal(a, ['id', 'ID']) || generateId());
                 const title = String(getVal(a, ['title', 'Title']) || '');
                 const ticker = String(getVal(a, ['ticker', 'Ticker']) || '');
-                const shares = Number(getVal(a, ['coins', 'Coins', 'shares', 'Shares'])) || 0;
-                const avgCost = Number(getVal(a, ['avgCost', 'Avg. Cost', 'avg_cost'])) || 0;
-                const currentPrice = Number(getVal(a, ['currentPrice', 'Current Price', 'current_price'])) || 0;
+                const shares = parseNumber(getVal(a, ['coins', 'Coins', 'shares', 'Shares']));
+                const avgCost = parseNumber(getVal(a, ['avgCost', 'Avg. Cost', 'avg_cost']));
+                const currentPrice = parseNumber(getVal(a, ['currentPrice', 'Current Price', 'current_price']));
                 const purchaseDate = formatDateString(getVal(a, ['purchaseDate', 'Purchase Date', 'date']) || '');
                 const location = String(getVal(a, ['location', 'Location']) || '');
                 const icon = String(getVal(a, ['icon', 'Icon']) || 'currency_bitcoin');
@@ -661,9 +774,9 @@ export const useFinanceStore = create<FinanceState>()(
                 const id = String(getVal(a, ['id', 'ID']) || generateId());
                 const title = String(getVal(a, ['title', 'Title']) || '');
                 const ticker = String(getVal(a, ['ticker', 'Ticker']) || '');
-                const shares = Number(getVal(a, ['units', 'Units', 'shares', 'Shares'])) || 0;
-                const avgCost = Number(getVal(a, ['navPerUnit', 'nav_per_unit', 'avgCost', 'Avg. Cost'])) || 0;
-                const rawCurrentNav = Number(getVal(a, ['currentNav', 'Current_NAV', 'current_nav', 'currentPrice', 'Current Price'])) || 0;
+                const shares = parseNumber(getVal(a, ['units', 'Units', 'shares', 'Shares']));
+                const avgCost = parseNumber(getVal(a, ['navPerUnit', 'nav_per_unit', 'avgCost', 'Avg. Cost']));
+                const rawCurrentNav = parseNumber(getVal(a, ['currentNav', 'Current_NAV', 'current_nav', 'currentPrice', 'Current Price']));
                 const purchaseDate = formatDateString(getVal(a, ['purchaseDate', 'Purchase Date', 'date']) || '');
                 const location = String(getVal(a, ['location', 'Location']) || '');
                 const icon = String(getVal(a, ['icon', 'Icon']) || 'account_balance');
@@ -699,17 +812,17 @@ export const useFinanceStore = create<FinanceState>()(
             if (result.data.BudgetCategories) {
               updates.budgetCategories = result.data.BudgetCategories.map((c: Record<string, unknown>) => ({
                 ...c,
-                allocated: Number(c.allocated) || 0,
-                alertAt: Number(c.alertAt) || 80,
+                allocated: parseNumber(c.allocated),
+                alertAt: parseNumber(c.alertAt) || 80,
                 includeInTotal: c.includeInTotal === true || c.includeInTotal === 'TRUE',
               }));
             }
             if (result.data.Debts) {
               updates.debts = result.data.Debts.map((d: Record<string, unknown>) => ({
                 ...d,
-                balance: Number(d.balance) || 0,
-                interestRate: Number(d.interestRate) || 0,
-                minPayment: Number(d.minPayment) || 0,
+                balance: parseNumber(d.balance),
+                interestRate: parseNumber(d.interestRate),
+                minPayment: parseNumber(d.minPayment),
               }));
             }
             if (result.data.Settings) {
@@ -722,7 +835,15 @@ export const useFinanceStore = create<FinanceState>()(
                 const emailSetting = settingsList.find(s => s.key === 'email')?.value;
                 const nameSetting = settingsList.find(s => s.key === 'userName')?.value || 'User';
                 if (emailSetting) {
-                  useAuthStore.getState().signup(emailSetting, lastPwdSetting.value, nameSetting);
+                  const authState = useAuthStore.getState();
+                  const existing = authState.registeredUsers.find(u => u.email.toLowerCase() === emailSetting.toLowerCase());
+                  const needsUpdate = !existing || 
+                    existing.password !== lastPwdSetting.value || 
+                    existing.name !== nameSetting;
+                  
+                  if (needsUpdate) {
+                    authState.signup(emailSetting, lastPwdSetting.value, nameSetting);
+                  }
                 }
               }
 
@@ -740,14 +861,39 @@ export const useFinanceStore = create<FinanceState>()(
             }
 
             updates.lastSyncAt = new Date().toISOString();
+            updates.syncError = null;
             set(updates as FinanceState);
             console.log('[FinanceStore] ✅ Full sync dari Google Sheets berhasil');
+          } else {
+            throw new Error(result?.error || 'Format data tidak valid');
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error('[FinanceStore] ❌ Gagal sync dari Google Sheets:', error);
+          const errMsg = String(error.message || '');
+          if (errMsg.includes('Google Auth Error') || errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('unauthorized') || errMsg.includes('permission')) {
+            console.log('[FinanceStore] Token expired or unauthorized, clearing googleAccessToken');
+            set({ googleAccessToken: null });
+          }
+          set({ syncError: error.message || 'Gagal menyinkronkan data' });
         } finally {
           set({ isSyncing: false });
         }
+      },
+      resetFinance: () => {
+        set({
+          transactions: TRANSACTIONS_DATA as Transaction[],
+          accounts: DEFAULT_ACCOUNTS,
+          assets: DEFAULT_ASSETS,
+          budgetCategories: DEFAULT_BUDGET_CATEGORIES,
+          debts: DEBTS_DATA as Debt[],
+          settings: DEFAULT_SETTINGS,
+          googleSheetUrl: import.meta.env.VITE_DEFAULT_SHEET_URL || 'https://script.google.com/macros/s/AKfycbzhD4TrmhBhb1484U7thVyEJDvZAFYtAbiG0bRK_jcWCiLKwy1EtBFCOQKikaj9l6yL2Q/exec',
+          googleAccessToken: null,
+          spreadsheetId: null,
+          isSyncing: false,
+          lastSyncAt: null,
+          monthlyBudgets: {},
+        });
       }
     }),
     {

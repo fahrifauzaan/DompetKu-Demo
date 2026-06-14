@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuthStore } from '../store/useAuthStore';
+import { useGoogleLogin } from '@react-oauth/google';
+import { copyTemplateSpreadsheet, findAppSpreadsheet } from '../services/googleApiService';
+import { useFinanceStore } from '../store/useFinanceStore';
 
 interface Toast {
   id: string;
@@ -11,8 +14,10 @@ interface Toast {
 const FinanceLogin: React.FC = () => {
   // Store actions & states
   const login = useAuthStore(state => state.login);
+  const loginWithGoogle = useAuthStore(state => state.loginWithGoogle);
   const signup = useAuthStore(state => state.signup);
   const registeredUsers = useAuthStore(state => state.registeredUsers);
+  const setGoogleCredentials = useFinanceStore(state => state.setGoogleCredentials);
 
   // UI States
   const [mode, setMode] = useState<'login' | 'signup_email' | 'signup_otp' | 'signup_password'>('login');
@@ -38,6 +43,20 @@ const FinanceLogin: React.FC = () => {
   
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Setup Modal States
+  const [pendingSetup, setPendingSetup] = useState<{
+    type: 'buyer' | 'demo';
+    token?: string;
+    userInfo?: any;
+    demoEmail?: string;
+    demoName?: string;
+  } | null>(null);
+  const [isCopying, setIsCopying] = useState(false);
+
+  // Custom DB State
+  const [customDbName, setCustomDbName] = useState('');
+  const [showCustomDbInput, setShowCustomDbInput] = useState(false);
 
   // Show Toast Helper
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -76,6 +95,117 @@ const FinanceLogin: React.FC = () => {
     } else {
       showToast('Berhasil masuk! Selamat datang kembali.', 'success');
     }
+  };
+
+  // Google OAuth Login Flow
+  const handleGoogleLogin = useGoogleLogin({
+    scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets',
+    onSuccess: async (tokenResponse) => {
+      try {
+        showToast('Berhasil otorisasi Google. Menyiapkan database...', 'info');
+        
+        // 1. Fetch user info
+        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        });
+        const userInfo = await userInfoRes.json();
+        
+        // 2. Verify License via Apps Script
+        const verifyUrl = import.meta.env.VITE_LICENSE_VERIFICATION_URL;
+        if (verifyUrl) {
+          showToast('Memverifikasi lisensi pengguna...', 'info');
+          const verifyRes = await fetch(`${verifyUrl}?action=verifyEmail&email=${encodeURIComponent(userInfo.email)}`);
+          const verifyData = await verifyRes.json();
+          
+          if (!verifyData.isAuthorized) {
+            showToast(verifyData.message || 'Email Anda belum terdaftar sebagai pembeli.', 'error');
+            return; // Stop login process
+          }
+        }
+        
+        // 3. Check if spreadsheet already exists in Drive
+        let sheetId: string | undefined | null = null;
+        
+        // First, check if we already have the spreadsheetId saved in the user's profile
+        const existingUser = registeredUsers.find(u => u.email.toLowerCase() === userInfo.email.toLowerCase());
+        if (existingUser && existingUser.spreadsheetId) {
+          sheetId = existingUser.spreadsheetId;
+        }
+
+        // If not found in profile, try to find by exact name (fallback for old users or Incognito)
+        if (!sheetId) {
+          sheetId = await findAppSpreadsheet(tokenResponse.access_token, customDbName.trim() || undefined);
+        }
+        
+        if (sheetId) {
+          showToast('Database ditemukan di Google Drive Anda.', 'success');
+          setGoogleCredentials(tokenResponse.access_token, sheetId);
+          
+          const password = 'google-oauth-password';
+          const exists = registeredUsers.some(u => u.email.toLowerCase() === userInfo.email.toLowerCase());
+          
+          if (exists) {
+            loginWithGoogle(userInfo.email);
+          } else {
+            // Provide sheetId during signup so it persists immediately
+            signup(userInfo.email, password, userInfo.name, userInfo.picture, undefined, sheetId);
+          }
+        } else {
+          // Tampilkan panduan sebelum menyalin template
+          setPendingSetup({ type: 'buyer', token: tokenResponse.access_token, userInfo });
+        }
+      } catch (err) {
+        showToast('Terjadi kesalahan saat otorisasi Google.', 'error');
+        console.error(err);
+      }
+    },
+    onError: () => {
+      showToast('Otorisasi Google gagal atau dibatalkan.', 'error');
+    }
+  });
+
+  // Confirm Setup for Buyer
+  const handleConfirmBuyerSetup = async () => {
+    if (!pendingSetup || pendingSetup.type !== 'buyer') return;
+    setIsCopying(true);
+    try {
+      showToast('Menyalin template Spreadsheet ke Google Drive Anda...', 'info');
+      const templateId = import.meta.env.VITE_TEMPLATE_SPREADSHEET_ID;
+      if (!templateId) {
+        showToast('Template Spreadsheet ID tidak ditemukan di konfigurasi.', 'error');
+        setIsCopying(false);
+        return;
+      }
+      const sheetId = await copyTemplateSpreadsheet(pendingSetup.token!, templateId);
+      if (!sheetId) {
+        showToast('Gagal menyalin template. Pastikan izin Drive diberikan.', 'error');
+        setIsCopying(false);
+        return;
+      }
+      showToast('Berhasil menyiapkan sesi. Masuk otomatis...', 'success');
+      setGoogleCredentials(pendingSetup.token!, sheetId);
+      
+      const password = 'google-oauth-password';
+      const exists = registeredUsers.some(u => u.email.toLowerCase() === pendingSetup.userInfo.email.toLowerCase());
+      if (exists) {
+        loginWithGoogle(pendingSetup.userInfo.email);
+      } else {
+        signup(pendingSetup.userInfo.email, password, pendingSetup.userInfo.name, pendingSetup.userInfo.picture, undefined, sheetId);
+      }
+      setPendingSetup(null);
+    } catch (err) {
+      showToast('Terjadi kesalahan saat menyalin template.', 'error');
+      console.error(err);
+    } finally {
+      setIsCopying(false);
+    }
+  };
+
+  // Confirm Setup for Demo
+  const handleConfirmDemoSetup = () => {
+    if (!pendingSetup || pendingSetup.type !== 'demo') return;
+    triggerSignUpFlow(pendingSetup.demoEmail!, pendingSetup.demoName!);
+    setPendingSetup(null);
   };
 
   // Trigger Sign Up flow & generate simulated OTP
@@ -156,13 +286,25 @@ const FinanceLogin: React.FC = () => {
 
   // Quick Demo account selector for sign-in or signup
   const selectDemoAccount = (email: string, name: string) => {
+    const hostname = window.location.hostname;
+    // Redirect if NOT on the demo domain or localhost
+    const isDemoHost = hostname === 'demo-dompetku.vercel.app' || hostname.includes('localhost');
+    
+    if (!isDemoHost) {
+      showToast('Mengarahkan ke Website Demo DompetKu...', 'info');
+      setTimeout(() => {
+        window.location.href = 'https://demo-dompetku.vercel.app';
+      }, 1200);
+      return;
+    }
+
     const isRegistered = registeredUsers.some(u => u.email.toLowerCase() === email.toLowerCase());
     if (isRegistered) {
       setLoginEmail(email);
       setLoginPassword('password123'); // Default password for pre-registered demo accounts
       showToast(`Mengisi kredensial demo untuk ${name}`, 'info');
     } else {
-      triggerSignUpFlow(email, name);
+      setPendingSetup({ type: 'demo', demoEmail: email, demoName: name });
     }
   };
 
@@ -323,10 +465,8 @@ const FinanceLogin: React.FC = () => {
                   </div>
 
                   <button 
-                    onClick={() => {
-                      setSignUpError('');
-                      setMode('signup_email');
-                    }}
+                    type="button"
+                    onClick={() => handleGoogleLogin()}
                     className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer"
                   >
                     <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
@@ -337,8 +477,37 @@ const FinanceLogin: React.FC = () => {
                         <path d="M12,2.9a5.1,5.1,0,0,1,3.48,1.35l2.44-1.89A9.15,9.15,0,0,0,12,2.9Z" fill="#4285f4" />
                       </g>
                     </svg>
-                    <span>Daftar Baru dengan Akun Google</span>
+                    <span>Masuk dengan Akun Google</span>
                   </button>
+
+                  {/* Custom DB Name Toggle & Input */}
+                  <div className="mt-4">
+                    <button
+                      type="button"
+                      onClick={() => setShowCustomDbInput(!showCustomDbInput)}
+                      className="text-[10px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 w-full text-center hover:underline cursor-pointer transition-colors"
+                    >
+                      {showCustomDbInput ? 'Sembunyikan Opsi Pencarian Kustom' : 'Saya punya nama file database sendiri'}
+                    </button>
+
+                    {showCustomDbInput && (
+                      <div className="mt-3 bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/10 animate-fade-in">
+                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                          Nama File Google Sheets Anda
+                        </label>
+                        <input
+                          type="text"
+                          value={customDbName}
+                          onChange={(e) => setCustomDbName(e.target.value)}
+                          placeholder="Misal: Data Keuangan Marcelena dan Fakhri"
+                          className="apple-input py-2.5 px-3 text-xs w-full mb-1.5"
+                        />
+                        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+                          Isi jika nama file database di Google Drive Anda bukan "DompetKu Database". Pastikan namanya persis sama.
+                        </p>
+                      </div>
+                    )}
+                  </div>
 
                   {/* Demo Account Quick Pickers */}
                   <div className="mt-8">
@@ -604,6 +773,117 @@ const FinanceLogin: React.FC = () => {
               >
                 Mengerti
               </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Setup / Guide Modal for Buyer & Demo */}
+      <AnimatePresence>
+        {pendingSetup && (
+          <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 shadow-2xl relative overflow-hidden"
+            >
+              {pendingSetup.type === 'buyer' ? (
+                <>
+                  <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mb-6">
+                    <span className="material-symbols-outlined text-3xl">verified_user</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Lisensi Valid! 🎉</h3>
+                  <p className="text-slate-600 dark:text-slate-400 mb-6 text-sm leading-relaxed">
+                    Selamat, {pendingSetup.userInfo?.name}! Email Anda terdaftar sebagai pembeli DompetKu. Berikut panduan selanjutnya:
+                  </p>
+                  <ul className="space-y-4 mb-8">
+                    <li className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-sm font-bold">1</span>
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Kami akan menyalin <strong>Master Template Database</strong> ke akun Google Drive Anda. Proses ini butuh sekitar 5-10 detik.
+                      </p>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 flex items-center justify-center shrink-0 mt-0.5">
+                        <span className="text-sm font-bold">2</span>
+                      </div>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        File salinan tersebut akan menjadi database pribadi Anda. <strong>Jangan mengubah struktur kolom atau nama tab sheet</strong> agar aplikasi berjalan lancar.
+                      </p>
+                    </li>
+                  </ul>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setPendingSetup(null)}
+                      disabled={isCopying}
+                      className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-2xl transition-all cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      onClick={handleConfirmBuyerSetup}
+                      disabled={isCopying}
+                      className="flex-1 py-3.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-2xl transition-all shadow-lg shadow-blue-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                    >
+                      {isCopying ? (
+                        <>
+                          <span className="material-symbols-outlined animate-spin">refresh</span>
+                          Menyalin...
+                        </>
+                      ) : (
+                        'Mengerti, Salin Sekarang'
+                      )}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 rounded-full flex items-center justify-center mb-6">
+                    <span className="material-symbols-outlined text-3xl">visibility</span>
+                  </div>
+                  <h3 className="text-2xl font-black text-slate-900 dark:text-white mb-2">Panduan Akun Demo</h3>
+                  <p className="text-slate-600 dark:text-slate-400 mb-6 text-sm leading-relaxed">
+                    Anda akan masuk menggunakan akun demo publik DompetKu.
+                  </p>
+                  <ul className="space-y-4 mb-8">
+                    <li className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-amber-500 mt-0.5">info</span>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Data keuangan yang Anda lihat adalah <strong>data tiruan (mock data)</strong> untuk keperluan demonstrasi.
+                      </p>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-red-500 mt-0.5">block</span>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Fitur sinkronisasi ke Google Drive dan penyalinan Master Template <strong>dinonaktifkan</strong> pada mode demo ini untuk menjaga keamanan aplikasi.
+                      </p>
+                    </li>
+                    <li className="flex items-start gap-3">
+                      <span className="material-symbols-outlined text-emerald-500 mt-0.5">shopping_cart</span>
+                      <p className="text-sm text-slate-700 dark:text-slate-300">
+                        Jika Anda tertarik dan ingin memiliki database pribadi, silakan <strong>beli lisensi resmi aplikasi DompetKu</strong>.
+                      </p>
+                    </li>
+                  </ul>
+                  <div className="flex gap-3">
+                    <button 
+                      onClick={() => setPendingSetup(null)}
+                      className="flex-1 py-3.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold rounded-2xl transition-all cursor-pointer"
+                    >
+                      Batal
+                    </button>
+                    <button 
+                      onClick={handleConfirmDemoSetup}
+                      className="flex-1 py-3.5 bg-amber-500 hover:bg-amber-600 text-white font-semibold rounded-2xl transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+                    >
+                      Masuk Mode Demo
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </div>
         )}

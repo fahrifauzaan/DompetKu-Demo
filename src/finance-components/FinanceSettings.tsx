@@ -13,7 +13,7 @@ interface FinanceSettingsProps {
 const FinanceSettings: React.FC<FinanceSettingsProps> = ({ onBack }) => {
   const [activeSection, setActiveSection] = useState<'profil' | 'keamanan' | 'preferensi' | 'notifikasi'>('profil');
   
-  const { settings, googleSheetUrl, setGoogleSheetUrl, updateSettings } = useFinanceStore();
+  const { settings, googleSheetUrl, setGoogleSheetUrl, updateSettings, googleAccessToken, spreadsheetId, setSpreadsheetId, syncFromGoogleSheets } = useFinanceStore();
   
   const user = useAuthStore(state => state.user);
   const signup = useAuthStore(state => state.signup);
@@ -127,6 +127,11 @@ const FinanceSettings: React.FC<FinanceSettingsProps> = ({ onBack }) => {
     // Sync back to Auth Store
     if (user) {
       signup(profileEmail, passToSave, profileName, user.photoURL);
+    }
+    
+    // Auto sync if user is logged in with Google (in case spreadsheet ID changed)
+    if (googleAccessToken) {
+      await syncFromGoogleSheets();
     }
 
     setIsSaving(false);
@@ -357,8 +362,29 @@ const FinanceSettings: React.FC<FinanceSettingsProps> = ({ onBack }) => {
                           {user?.sheetUrl ? 'Lihat Panduan Integrasi' : 'Hubungkan Spreadsheet Anda'}
                         </button>
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-outline-variant/10 dark:border-white/5">
+                        <div className="space-y-2 md:col-span-2">
+                          <label className="text-xs font-bold text-outline uppercase ml-1">Tautan / ID Google Spreadsheet Anda</label>
+                          <input 
+                            type="text" 
+                            value={spreadsheetId ? `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit` : ''}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              let newId = val;
+                              if (val.includes('/d/')) {
+                                const match = val.match(/\/[d]\/([a-zA-Z0-9-_]+)/);
+                                if (match) newId = match[1];
+                              }
+                              setSpreadsheetId(newId);
+                            }}
+                            placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                            className="w-full bg-surface-container dark:bg-white/5 border border-outline-variant/30 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-colors dark:text-white font-mono text-xs" 
+                          />
+                          <p className="text-xs text-outline ml-1 mt-1 font-medium">
+                            Link Google Sheets database pribadi Anda. Diperlukan untuk sinkronisasi langsung menggunakan Google API.
+                          </p>
+                        </div>
+
                         <div className="space-y-2 md:col-span-2">
                           <label className="text-xs font-bold text-outline uppercase ml-1">Google Sheets Web App URL</label>
                           <input 
@@ -368,7 +394,9 @@ const FinanceSettings: React.FC<FinanceSettingsProps> = ({ onBack }) => {
                             placeholder="https://script.google.com/macros/s/.../exec"
                             className="w-full bg-surface-container dark:bg-white/5 border border-outline-variant/30 dark:border-white/10 rounded-xl px-4 py-3 text-sm focus:outline-none focus:border-primary transition-colors dark:text-white font-mono text-xs" 
                           />
-                          <p className="text-xs text-outline ml-1 mt-1">Masukkan URL Script Web App dari Google Sheets Anda untuk mengaktifkan sinkronisasi database.</p>
+                          <p className="text-xs text-outline ml-1 mt-1">
+                            URL Script Web App dari spreadsheet Anda. Diperlukan untuk fallback sinkronisasi makro jika token habis atau tanpa login.
+                          </p>
                         </div>
                         <div className="space-y-2">
                           <label className="text-xs font-bold text-outline uppercase ml-1">Mata Uang Utama</label>

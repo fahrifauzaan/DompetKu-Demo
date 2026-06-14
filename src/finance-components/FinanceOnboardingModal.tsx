@@ -147,15 +147,28 @@ const FinanceOnboardingModal: React.FC<FinanceOnboardingModalProps> = ({ onClose
                 </div>
 
                 <div className="pt-4 text-center">
-                  <a 
-                    href={templateLink}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow transition-all cursor-pointer"
-                  >
-                    <span>Salin Template Spreadsheet</span>
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  </a>
+                  {user?.email === (import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com') ? (
+                    <button 
+                      onClick={(e) => {
+                        e.preventDefault();
+                        alert('Maaf, akun demo publik tidak dapat menduplikasi template. Hanya pengguna yang sudah membeli dan terdaftar yang dapat mengakses template ini.');
+                      }}
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-slate-400 dark:bg-slate-700 text-white font-semibold text-xs rounded-xl shadow cursor-not-allowed"
+                    >
+                      <span>Salin Template Spreadsheet</span>
+                      <span className="material-symbols-outlined text-sm">lock</span>
+                    </button>
+                  ) : (
+                    <a 
+                      href={templateLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs rounded-xl shadow transition-all cursor-pointer"
+                    >
+                      <span>Salin Template Spreadsheet</span>
+                      <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    </a>
+                  )}
                 </div>
               </motion.div>
             )}

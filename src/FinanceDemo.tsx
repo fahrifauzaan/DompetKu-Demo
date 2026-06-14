@@ -41,6 +41,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
   const syncFromGoogleSheets = useFinanceStore(state => state.syncFromGoogleSheets);
   const isSyncing = useFinanceStore(state => state.isSyncing);
   const lastSyncAt = useFinanceStore(state => state.lastSyncAt);
+  const syncError = useFinanceStore(state => state.syncError);
   const accounts = useFinanceStore(state => state.accounts);
   const assets = useFinanceStore(state => state.assets);
   const settings = useFinanceStore(state => state.settings);
@@ -52,23 +53,59 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
 
   const [showOnboarding, setShowOnboarding] = useState(false);
 
-  // Load active user's sheetUrl into FinanceStore
+  // Load active user's credentials into FinanceStore
   useEffect(() => {
     if (user) {
-      if (user.sheetUrl) {
-        setGoogleSheetUrl(user.sheetUrl);
+      const financeState = useFinanceStore.getState();
+      
+      if (user.email.toLowerCase() === 'demo@dompetku.com') {
+        const defaultSheetUrl = import.meta.env.VITE_DEFAULT_SHEET_URL || 'https://script.google.com/macros/s/AKfycbzhD4TrmhBhb1484U7thVyEJDvZAFYtAbiG0bRK_jcWCiLKwy1EtBFCOQKikaj9l6yL2Q/exec';
+        if (financeState.googleSheetUrl !== defaultSheetUrl) {
+          financeState.setGoogleSheetUrl(defaultSheetUrl);
+        }
+        if (financeState.spreadsheetId !== '1GMIXfRg7oWSBwUsOyRJqxKKR3-QC6xJny89IsDsbDJ0') {
+          financeState.setSpreadsheetId('1GMIXfRg7oWSBwUsOyRJqxKKR3-QC6xJny89IsDsbDJ0');
+        }
+        if (financeState.googleAccessToken !== null) {
+          useFinanceStore.setState({ googleAccessToken: null });
+        }
       } else {
-        setGoogleSheetUrl(import.meta.env.VITE_DEFAULT_SHEET_URL || 'https://script.google.com/macros/s/AKfycbzhD4TrmhBhb1484U7thVyEJDvZAFYtAbiG0bRK_jcWCiLKwy1EtBFCOQKikaj9l6yL2Q/exec');
+        const resolvedSheetUrl = user.sheetUrl || '';
+        const resolvedSpreadsheetId = user.spreadsheetId || null;
+        
+        if (!resolvedSheetUrl && !resolvedSpreadsheetId) {
+          // Google Auth user without database setup -> set blank slate
+          useFinanceStore.setState({
+            transactions: [],
+            accounts: [],
+            assets: [],
+            budgetCategories: [],
+            debts: [],
+            monthlyBudgets: {},
+            googleSheetUrl: '',
+            spreadsheetId: null
+          });
+        } else {
+          if (financeState.googleSheetUrl !== resolvedSheetUrl) {
+            financeState.setGoogleSheetUrl(resolvedSheetUrl);
+          }
+          if (financeState.spreadsheetId !== resolvedSpreadsheetId) {
+            financeState.setSpreadsheetId(resolvedSpreadsheetId as any);
+          }
+        }
       }
     }
-  }, [user, setGoogleSheetUrl]);
+  }, [user]);
 
   // Sync auth user name with local settings
   useEffect(() => {
     if (user) {
       const hasUserName = settings.find(s => s.key === 'userName')?.value === user.name;
       if (!hasUserName) {
-        const updated = settings.map(s => s.key === 'userName' ? { ...s, value: user.name } : s);
+        const exists = settings.some(s => s.key === 'userName');
+        const updated = exists
+          ? settings.map(s => s.key === 'userName' ? { ...s, value: user.name } : s)
+          : [...settings, { key: 'userName', value: user.name }];
         updateSettings(updated);
       }
     }
@@ -297,7 +334,7 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
         <div className="pt-24 px-4 lg:px-12 pb-24 lg:pb-12 w-full mx-auto space-y-12 no-print">
           
           {/* Demo Warning Banner */}
-          {!user?.sheetUrl && (
+          {(user?.email.toLowerCase() === 'demo@dompetku.com' || !(user?.sheetUrl || user?.spreadsheetId)) && (
             <div className="p-4 bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-800 dark:text-amber-300">
               <div className="flex items-center gap-3 text-xs md:text-sm font-semibold">
                 <span className="material-symbols-outlined text-lg">warning</span>
@@ -309,6 +346,16 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
               >
                 Hubungkan Sekarang
               </button>
+            </div>
+          )}
+
+          {/* Sync Error Warning Banner */}
+          {syncError && (
+            <div className="p-4 bg-red-500/10 dark:bg-red-500/20 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-800 dark:text-red-300">
+              <span className="material-symbols-outlined text-lg">error</span>
+              <div className="text-xs md:text-sm font-semibold">
+                Gagal sinkronisasi dengan Google Sheets: <span className="font-mono">{syncError}</span>. Silakan periksa koneksi, tautan spreadsheet, atau hubungkan kembali akun Google Anda di Pengaturan.
+              </div>
             </div>
           )}
 
