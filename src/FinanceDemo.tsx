@@ -334,20 +334,27 @@ const FinanceDemo: React.FC<FinanceDemoProps> = ({ isDark, toggleDark }) => {
         <div className="pt-24 px-4 lg:px-12 pb-24 lg:pb-12 w-full mx-auto space-y-12 no-print">
           
           {/* Demo Warning Banner */}
-          {(user?.email.toLowerCase() === 'demo@dompetku.com' || !(user?.sheetUrl || user?.spreadsheetId)) && (
+          {user?.email.toLowerCase() === 'demo@dompetku.com' ? (
             <div className="p-4 bg-amber-500/10 dark:bg-amber-500/20 border border-amber-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-amber-800 dark:text-amber-300">
               <div className="flex items-center gap-3 text-xs md:text-sm font-semibold">
                 <span className="material-symbols-outlined text-lg">warning</span>
-                <span>Anda sedang menggunakan database demo publik. Hubungkan Google Spreadsheet Anda sendiri untuk mulai mengelola data secara permanen.</span>
+                <span>Anda sedang menggunakan database demo publik. Silakan eksplorasi fitur menggunakan data tiruan ini.</span>
+              </div>
+            </div>
+          ) : !(user?.sheetUrl || user?.spreadsheetId) ? (
+            <div className="p-4 bg-blue-500/10 dark:bg-blue-500/20 border border-blue-500/20 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-3 text-blue-800 dark:text-blue-300">
+              <div className="flex items-center gap-3 text-xs md:text-sm font-semibold">
+                <span className="material-symbols-outlined text-lg">info</span>
+                <span>Database belum terhubung (Data Kosong). Silakan buka Pengaturan untuk memasukkan Link Google Sheets dan Web App URL Anda agar data dapat disinkronkan.</span>
               </div>
               <button 
-                onClick={() => setShowOnboarding(true)}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow transition-all shrink-0 cursor-pointer"
+                onClick={() => setActiveTab('settings')}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow transition-all shrink-0 cursor-pointer"
               >
                 Hubungkan Sekarang
               </button>
             </div>
-          )}
+          ) : null}
 
           {/* Sync Error Warning Banner */}
           {syncError && (

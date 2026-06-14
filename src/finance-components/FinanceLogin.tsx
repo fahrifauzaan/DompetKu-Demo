@@ -102,7 +102,7 @@ const FinanceLogin: React.FC = () => {
     scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets',
     onSuccess: async (tokenResponse) => {
       try {
-        showToast('Berhasil otorisasi Google. Menyiapkan database...', 'info');
+        showToast('Berhasil otorisasi Google. Memverifikasi...', 'info');
         
         // 1. Fetch user info
         const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
@@ -123,37 +123,26 @@ const FinanceLogin: React.FC = () => {
           }
         }
         
-        // 3. Check if spreadsheet already exists in Drive
-        let sheetId: string | undefined | null = null;
-        
-        // First, check if we already have the spreadsheetId saved in the user's profile
+        // 3. Retrieve saved details if any
+        let sheetId = '';
         const existingUser = registeredUsers.find(u => u.email.toLowerCase() === userInfo.email.toLowerCase());
         if (existingUser && existingUser.spreadsheetId) {
           sheetId = existingUser.spreadsheetId;
         }
 
-        // If not found in profile, try to find by exact name (fallback for old users or Incognito)
-        if (!sheetId) {
-          sheetId = await findAppSpreadsheet(tokenResponse.access_token, customDbName.trim() || undefined);
-        }
+        // Set credentials in the store
+        setGoogleCredentials(tokenResponse.access_token, sheetId);
         
-        if (sheetId) {
-          showToast('Database ditemukan di Google Drive Anda.', 'success');
-          setGoogleCredentials(tokenResponse.access_token, sheetId);
-          
-          const password = 'google-oauth-password';
-          const exists = registeredUsers.some(u => u.email.toLowerCase() === userInfo.email.toLowerCase());
-          
-          if (exists) {
-            loginWithGoogle(userInfo.email);
-          } else {
-            // Provide sheetId during signup so it persists immediately
-            signup(userInfo.email, password, userInfo.name, userInfo.picture, undefined, sheetId);
-          }
+        const password = 'google-oauth-password';
+        const exists = registeredUsers.some(u => u.email.toLowerCase() === userInfo.email.toLowerCase());
+        
+        if (exists) {
+          loginWithGoogle(userInfo.email);
         } else {
-          // Tampilkan panduan sebelum menyalin template
-          setPendingSetup({ type: 'buyer', token: tokenResponse.access_token, userInfo });
+          // New user signup starts with empty spreadsheetId and sheetUrl (blank slate)
+          signup(userInfo.email, password, userInfo.name, userInfo.picture, '', '');
         }
+        showToast('Berhasil masuk dengan Akun Google!', 'success');
       } catch (err) {
         showToast('Terjadi kesalahan saat otorisasi Google.', 'error');
         console.error(err);
