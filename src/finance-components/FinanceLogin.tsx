@@ -19,6 +19,32 @@ const FinanceLogin: React.FC = () => {
   const registeredUsers = useAuthStore(state => state.registeredUsers);
   const setGoogleCredentials = useFinanceStore(state => state.setGoogleCredentials);
 
+  // Detect if we are on the demo domain
+  const isDemoDomain = typeof window !== 'undefined' && window.location.hostname === 'demo-dompetku.vercel.app';
+
+  // Direct login for demo mode on demo website
+  const handleDirectDemoLogin = () => {
+    const email = import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com';
+    const password = 'password123';
+    
+    showToast('Masuk ke Mode Demo...', 'info');
+    
+    const result = login(email, password);
+    if (!result.success) {
+      // Register demo user on the fly if not exists
+      const photoURL = `https://ui-avatars.com/api/?name=Demo+Admin&background=0D8ABC&color=fff`;
+      signup(email, password, 'Demo Admin', photoURL);
+      const retryResult = login(email, password);
+      if (retryResult.success) {
+        showToast('Berhasil masuk ke Mode Demo!', 'success');
+      } else {
+        showToast(retryResult.error || 'Gagal masuk ke Mode Demo.', 'error');
+      }
+    } else {
+      showToast('Berhasil masuk ke Mode Demo!', 'success');
+    }
+  };
+
   // UI States
   const [mode, setMode] = useState<'login' | 'signup_email' | 'signup_otp' | 'signup_password'>('login');
   const [showLupaPasswordModal, setShowLupaPasswordModal] = useState(false);
@@ -382,135 +408,164 @@ const FinanceLogin: React.FC = () => {
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ duration: 0.3 }}
                 >
-                  <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 font-headline mb-2 text-center lg:text-left">
-                    Selamat Datang
-                  </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 text-center lg:text-left">
-                    Masuk untuk mengelola dan memantau kekayaan Anda
-                  </p>
+                  {isDemoDomain ? (
+                    <div className="text-center lg:text-left">
+                      <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 font-headline mb-2 text-center lg:text-left">
+                        Masuk Mode Demo
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-8 text-center lg:text-left leading-relaxed">
+                        Gunakan data contoh untuk mencoba seluruh fitur premium secara langsung.
+                      </p>
 
-                  <form onSubmit={handleLoginSubmit} className="space-y-4">
-                    {loginError && (
-                      <div className="p-3 text-xs bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-xl border border-red-200/50 dark:border-red-900/50 flex items-center gap-2">
-                        <span className="material-symbols-outlined text-sm font-bold">warning</span>
-                        <span>{loginError}</span>
-                      </div>
-                    )}
-
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 ml-1">Email</label>
-                      <input 
-                        type="email" 
-                        value={loginEmail}
-                        onChange={e => setLoginEmail(e.target.value)}
-                        placeholder="contoh@gmail.com"
-                        className="apple-input py-3.5 px-4 text-sm"
-                      />
-                    </div>
-
-                    <div>
-                      <div className="flex justify-between items-center mb-1.5 ml-1">
-                        <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400">Password</label>
-                        <button 
-                          type="button"
-                          onClick={() => setShowLupaPasswordModal(true)}
-                          className="text-[10px] font-bold text-blue-600 dark:text-[#a7c8ff] hover:underline cursor-pointer bg-transparent border-none outline-none"
-                        >
-                          Lupa Password?
-                        </button>
-                      </div>
-                      <div className="relative">
-                        <input 
-                          type={showPasswordVisibility ? "text" : "password"} 
-                          value={loginPassword}
-                          onChange={e => setLoginPassword(e.target.value)}
-                          placeholder="••••••••"
-                          className="apple-input py-3.5 px-4 pr-12 text-sm w-full"
-                        />
-                        <button 
-                          type="button"
-                          onClick={() => setShowPasswordVisibility(!showPasswordVisibility)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                        >
-                          <span className="material-symbols-outlined text-lg">{showPasswordVisibility ? 'visibility_off' : 'visibility'}</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <button 
-                      type="submit" 
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 shadow-md shadow-blue-500/10 hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer mt-6"
-                    >
-                      <span>Masuk</span>
-                      <span className="material-symbols-outlined text-sm font-bold">login</span>
-                    </button>
-                  </form>
-
-                  {/* Google Authenticator Action */}
-                  <div className="relative flex py-5 items-center">
-                    <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                    <span className="flex-shrink mx-4 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Atau</span>
-                    <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
-                  </div>
-
-                  <button 
-                    type="button"
-                    onClick={() => handleGoogleLogin()}
-                    className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer"
-                  >
-                    <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
-                      <g transform="matrix(1, 0, 0, 1, 0, 0)">
-                        <path d="M21.35,11.1H12v2.7h5.38C16.88,15.69,14.8,17.2,12,17.2a5.2,5.2,0,1,1,4.78-7.24l2.44-1.89A9.15,9.15,0,1,0,12,21.1c4.66,0,8.55-3.39,8.55-9.1A8.25,8.25,0,0,0,21.35,11.1Z" fill="#ea4335" />
-                        <path d="M12,21.1c4.66,0,8.55-3.39,8.55-9.1a8.25,8.25,0,0,0-.2-1.9H12v2.7h5.38C16.88,15.69,14.8,17.2,12,17.2a5.2,5.2,0,1,1,4.78-7.24l2.44-1.89A9.15,9.15,0,1,0,12,21.1Z" fill="#34a853" />
-                        <path d="M12,2.9a5.1,5.1,0,0,1,3.48,1.35l2.44-1.89A9.15,9.15,0,0,0,12,2.9a9.15,9.15,0,0,0-8.55,6.1l2.44,1.89A5.2,5.2,0,0,1,12,2.9Z" fill="#fbbc05" />
-                        <path d="M12,2.9a5.1,5.1,0,0,1,3.48,1.35l2.44-1.89A9.15,9.15,0,0,0,12,2.9Z" fill="#4285f4" />
-                      </g>
-                    </svg>
-                    <span>Masuk dengan Akun Google</span>
-                  </button>
-
-                  {/* Custom DB Name Toggle & Input */}
-                  <div className="mt-4">
-                    <button
-                      type="button"
-                      onClick={() => setShowCustomDbInput(!showCustomDbInput)}
-                      className="text-[10px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 w-full text-center hover:underline cursor-pointer transition-colors"
-                    >
-                      {showCustomDbInput ? 'Sembunyikan Opsi Pencarian Kustom' : 'Saya punya nama file database sendiri'}
-                    </button>
-
-                    {showCustomDbInput && (
-                      <div className="mt-3 bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/10 animate-fade-in">
-                        <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
-                          Nama File Google Sheets Anda
-                        </label>
-                        <input
-                          type="text"
-                          value={customDbName}
-                          onChange={(e) => setCustomDbName(e.target.value)}
-                          placeholder="Misal: Data Keuangan Marcelena dan Fakhri"
-                          className="apple-input py-2.5 px-3 text-xs w-full mb-1.5"
-                        />
-                        <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
-                          Isi jika nama file database di Google Drive Anda bukan "DompetKu Database". Pastikan namanya persis sama.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Demo Account Quick Pickers */}
-                  <div className="mt-8">
-                    <h5 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">Akun Demo Cepat</h5>
-                    <div className="grid grid-cols-1 gap-2">
                       <button 
-                        onClick={() => selectDemoAccount(import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com', 'Admin Demo')}
-                        className="py-3 px-4 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-center border border-transparent hover:border-blue-500/20 text-sm transition-all flex flex-col items-center justify-center gap-1 cursor-pointer"
+                        onClick={handleDirectDemoLogin}
+                        className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-4 px-6 rounded-2xl transition-all duration-200 shadow-md shadow-blue-500/10 hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer"
                       >
-                        <span className="font-bold text-slate-700 dark:text-slate-300 leading-none truncate">Gunakan Akun Demo Publik</span>
-                        <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-none truncate">Lihat data contoh & Coba Fitur secara langsung</span>
+                        <span>Masuk Mode Demo</span>
+                        <span className="material-symbols-outlined text-sm font-bold">login</span>
                       </button>
+
+                      <a 
+                        href="https://dompetku-blush.vercel.app"
+                        className="w-full text-center border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/5 text-slate-700 dark:text-slate-300 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer mt-3"
+                      >
+                        <span>Kembali ke Aplikasi Utama</span>
+                        <span className="material-symbols-outlined text-sm">open_in_new</span>
+                      </a>
                     </div>
-                  </div>
+                  ) : (
+                    <>
+                      <h3 className="text-xl font-black text-slate-800 dark:text-slate-100 font-headline mb-2 text-center lg:text-left">
+                        Selamat Datang
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mb-6 text-center lg:text-left">
+                        Masuk untuk mengelola dan memantau kekayaan Anda
+                      </p>
+
+                      <form onSubmit={handleLoginSubmit} className="space-y-4">
+                        {loginError && (
+                          <div className="p-3 text-xs bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 rounded-xl border border-red-200/50 dark:border-red-900/50 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm font-bold">warning</span>
+                            <span>{loginError}</span>
+                          </div>
+                        )}
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5 ml-1">Email</label>
+                          <input 
+                            type="email" 
+                            value={loginEmail}
+                            onChange={e => setLoginEmail(e.target.value)}
+                            placeholder="contoh@gmail.com"
+                            className="apple-input py-3.5 px-4 text-sm"
+                          />
+                        </div>
+
+                        <div>
+                          <div className="flex justify-between items-center mb-1.5 ml-1">
+                            <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400">Password</label>
+                            <button 
+                              type="button"
+                              onClick={() => setShowLupaPasswordModal(true)}
+                              className="text-[10px] font-bold text-blue-600 dark:text-[#a7c8ff] hover:underline cursor-pointer bg-transparent border-none outline-none"
+                            >
+                              Lupa Password?
+                            </button>
+                          </div>
+                          <div className="relative">
+                            <input 
+                              type={showPasswordVisibility ? "text" : "password"} 
+                              value={loginPassword}
+                              onChange={e => setLoginPassword(e.target.value)}
+                              placeholder="••••••••"
+                              className="apple-input py-3.5 px-4 pr-12 text-sm w-full"
+                            />
+                            <button 
+                              type="button"
+                              onClick={() => setShowPasswordVisibility(!showPasswordVisibility)}
+                              className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                            >
+                              <span className="material-symbols-outlined text-lg">{showPasswordVisibility ? 'visibility_off' : 'visibility'}</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        <button 
+                          type="submit" 
+                          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 shadow-md shadow-blue-500/10 hover:shadow-lg flex items-center justify-center gap-2 cursor-pointer mt-6"
+                        >
+                          <span>Masuk</span>
+                          <span className="material-symbols-outlined text-sm font-bold">login</span>
+                        </button>
+                      </form>
+
+                      {/* Google Authenticator Action */}
+                      <div className="relative flex py-5 items-center">
+                        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
+                        <span className="flex-shrink mx-4 text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Atau</span>
+                        <div className="flex-grow border-t border-slate-200 dark:border-slate-800"></div>
+                      </div>
+
+                      <button 
+                        type="button"
+                        onClick={() => handleGoogleLogin()}
+                        className="w-full bg-white dark:bg-white/5 border border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-semibold py-3.5 px-6 rounded-2xl transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer"
+                      >
+                        <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24" width="24" height="24" xmlns="http://www.w3.org/2000/svg">
+                          <g transform="matrix(1, 0, 0, 1, 0, 0)">
+                            <path d="M21.35,11.1H12v2.7h5.38C16.88,15.69,14.8,17.2,12,17.2a5.2,5.2,0,1,1,4.78-7.24l2.44-1.89A9.15,9.15,0,1,0,12,21.1c4.66,0,8.55-3.39,8.55-9.1A8.25,8.25,0,0,0,21.35,11.1Z" fill="#ea4335" />
+                            <path d="M12,21.1c4.66,0,8.55-3.39,8.55-9.1a8.25,8.25,0,0,0-.2-1.9H12v2.7h5.38C16.88,15.69,14.8,17.2,12,17.2a5.2,5.2,0,1,1,4.78-7.24l2.44-1.89A9.15,9.15,0,1,0,12,21.1Z" fill="#34a853" />
+                            <path d="M12,2.9a5.1,5.1,0,0,1,3.48,1.35l2.44-1.89A9.15,9.15,0,0,0,12,2.9a9.15,9.15,0,0,0-8.55,6.1l2.44,1.89A5.2,5.2,0,0,1,12,2.9Z" fill="#fbbc05" />
+                            <path d="M12,2.9a5.1,5.1,0,0,1,3.48,1.35l2.44-1.89A9.15,9.15,0,0,0,12,2.9Z" fill="#4285f4" />
+                          </g>
+                        </svg>
+                        <span>Masuk dengan Akun Google</span>
+                      </button>
+
+                      {/* Custom DB Name Toggle & Input */}
+                      <div className="mt-4">
+                        <button
+                          type="button"
+                          onClick={() => setShowCustomDbInput(!showCustomDbInput)}
+                          className="text-[10px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 w-full text-center hover:underline cursor-pointer transition-colors"
+                        >
+                          {showCustomDbInput ? 'Sembunyikan Opsi Pencarian Kustom' : 'Saya punya nama file database sendiri'}
+                        </button>
+
+                        {showCustomDbInput && (
+                          <div className="mt-3 bg-slate-50 dark:bg-white/5 p-3 rounded-xl border border-slate-200 dark:border-white/10 animate-fade-in">
+                            <label className="block text-[10px] font-bold text-slate-500 dark:text-slate-400 mb-1">
+                              Nama File Google Sheets Anda
+                            </label>
+                            <input
+                              type="text"
+                              value={customDbName}
+                              onChange={(e) => setCustomDbName(e.target.value)}
+                              placeholder="Misal: Data Keuangan Marcelena dan Fakhri"
+                              className="apple-input py-2.5 px-3 text-xs w-full mb-1.5"
+                            />
+                            <p className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">
+                              Isi jika nama file database di Google Drive Anda bukan "DompetKu Database". Pastikan namanya persis sama.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Demo Account Quick Pickers */}
+                      <div className="mt-8">
+                        <h5 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest mb-3 text-center">Akun Demo Cepat</h5>
+                        <div className="grid grid-cols-1 gap-2">
+                          <button 
+                            onClick={() => selectDemoAccount(import.meta.env.VITE_DEMO_EMAIL || 'demo@dompetku.com', 'Admin Demo')}
+                            className="py-3 px-4 rounded-xl bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 text-center border border-transparent hover:border-blue-500/20 text-sm transition-all flex flex-col items-center justify-center gap-1 cursor-pointer"
+                          >
+                            <span className="font-bold text-slate-700 dark:text-slate-300 leading-none truncate">Gunakan Akun Demo Publik</span>
+                            <span className="text-[10px] text-slate-400 dark:text-slate-500 leading-none truncate">Lihat data contoh & Coba Fitur secara langsung</span>
+                          </button>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </motion.div>
               )}
 
